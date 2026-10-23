@@ -21,3 +21,28 @@ QTabBar::tab:selected { background: #fff; font-weight: 600; }
 QGroupBox { background: #fff; border: 1px solid #dce2e8; border-radius: 8px; margin-top: 12px; padding: 12px; font-weight: 600; }
 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
 """
+
+DARK_STYLESHEET = """
+QMainWindow, QWidget { background: #181c22; color: #e1e6ed; font-size: 13px; }
+QMainWindow { background: #181c22; }
+QLabel { background: transparent; }
+QFrame#sidebar { background: #242b34; border-right: 1px solid #3b4551; border-radius: 8px; }
+QFrame#settingsPanel { background: #242b34; border: 1px solid #3b4551; border-radius: 9px; padding: 12px; }
+QPushButton#navButton { text-align: left; border: none; background: transparent; color: #d3dce7; padding: 13px 15px; border-radius: 6px; font-weight: 500; }
+QPushButton#navButton:hover { background: #333f4e; }
+QPushButton#navButton:checked { background: #263d57; color: #b8d9ff; font-weight: 700; }
+QPushButton { background: white; border: 1px solid #4b5868; border-radius: 6px; padding: 8px 12px; }
+QPushButton:hover { border-color: #8bbcf2; }
+QPushButton:disabled { color: #778493; background: #303843; }
+QComboBox, QSpinBox, QLineEdit { background: #242b34; border: 1px solid #4b5868; border-radius: 5px; padding: 7px; min-height: 20px; }
+QComboBox:focus, QLineEdit:focus { border-color: #8bbcf2; }
+QListWidget, QTextEdit { background: #242b34; border: 1px solid #3b4551; border-radius: 7px; }
+QTabWidget::pane { border: 1px solid #3b4551; background: #242b34; border-radius: 7px; }
+QTabBar::tab { background: #242b34; padding: 10px 15px; }
+QTabBar::tab:selected { background: #242b34; font-weight: 600; }
+QGroupBox { background: #242b34; border: 1px solid #3b4551; border-radius: 8px; margin-top: 12px; padding: 12px; font-weight: 600; }
+QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
+"""
+
+def stylesheet_for(theme: str) -> str:
+    return DARK_STYLESHEET if theme == "dark" else APP_STYLESHEET
