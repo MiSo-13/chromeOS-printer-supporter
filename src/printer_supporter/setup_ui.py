@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 
-from PyQt6.QtCore import QObject, QRunnable, QThreadPool, Qt, pyqtSignal
+from PyQt6.QtCore import QObject, QRunnable, QThreadPool, Qt, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
@@ -16,6 +17,9 @@ from .discovery import (
 )
 from .identification import PrinterIdentity, identify_printer, unknown_identity
 from .driver_recommendation import DriverAdvisor, DriverRecommendation
+from .driver_installation import (
+    DriverInstallPlan, DriverInstallService, official_support_for,
+)
 
 
 class WorkerSignals(QObject):
@@ -38,17 +42,21 @@ class Worker(QRunnable):
 
 class PrinterSetupWidget(QWidget):
     def __init__(self, *, service: DiscoveryService | None = None, on_registered=None,
-                 identifier=None, advisor: DriverAdvisor | None = None):
+                 identifier=None, advisor: DriverAdvisor | None = None,
+                 installer: DriverInstallService | None = None):
         super().__init__()
         self.service = service or DiscoveryService()
         self.on_registered = on_registered
         self.identifier = identifier or identify_printer
         self.advisor = advisor or DriverAdvisor()
+        self.installer = installer or DriverInstallService()
         self.pool = QThreadPool.globalInstance()
         self.current_device: DiscoveredPrinter | None = None
         self.identity_result: PrinterIdentity | None = None
         self.driver_recommendation: DriverRecommendation | None = None
+        self.install_plan: DriverInstallPlan | None = None
         self.identity_generation = 0
+        self._install_busy = False
         self._driver_user_edited = False
         self._queue_name_user_edited = False
 
@@ -137,6 +145,30 @@ class PrinterSetupWidget(QWidget):
         )
         self.recommendation_detail.setWordWrap(True)
         form.addRow("", self.recommendation_detail)
+        self.install_panel = QGroupBox("드라이버 확보 및 설치 안내")
+        install_layout = QVBoxLayout(self.install_panel)
+        self.official_support_label = QLabel("제조사 공식 지원 페이지를 확인합니다.")
+        self.official_support_label.setWordWrap(True)
+        install_layout.addWidget(self.official_support_label)
+        self.official_support_button = QPushButton("제조사 공식 지원 페이지 열기")
+        self.official_support_button.setEnabled(False)
+        self.official_support_button.clicked.connect(self._open_official_support)
+        install_layout.addWidget(self.official_support_button)
+        self.install_status_label = QLabel("배포판 패키지 지원 여부를 조회합니다.")
+        self.install_status_label.setWordWrap(True)
+        install_layout.addWidget(self.install_status_label)
+        self.install_button = QPushButton("확인된 배포판 드라이버 설치")
+        self.install_button.setEnabled(False)
+        self.install_button.clicked.connect(self.install_driver)
+        install_layout.addWidget(self.install_button)
+        install_note = QLabel(
+            "제조사 다운로드 파일은 직접 확인해야 하며 자동 실행하지 않습니다. "
+            "배포판 패키지는 호환 모델 확인과 별도 승인 후에만 설치합니다."
+        )
+        install_note.setWordWrap(True)
+        install_layout.addWidget(install_note)
+        layout.addWidget(self.install_panel)
+
         self.ppd_path = QLineEdit()
         self.ppd_path.setPlaceholderText("삼성 ULD 등 설치된 PPD 파일 경로")
         ppd_row = QHBoxLayout()
@@ -216,6 +248,8 @@ class PrinterSetupWidget(QWidget):
         self.current_device = device
         self._driver_user_edited = False
         self.driver_recommendation = None
+        self.install_plan = None
+        self._reset_install_panel()
         self.model_choice.clear()
         self.model_choice.addItem("드라이버 모델 확인 중", None)
         self.recommendation_summary.setText("드라이버 추천: 모델 분석 대기 중…")
@@ -238,6 +272,8 @@ class PrinterSetupWidget(QWidget):
         generation = self.identity_generation
         self.identity_result = None
         self.driver_recommendation = None
+        self.install_plan = None
+        self._reset_install_panel()
         self.model_choice.clear()
         self.model_choice.addItem("드라이버 모델 확인 중", None)
         self._driver_changed()
@@ -278,6 +314,16 @@ class PrinterSetupWidget(QWidget):
         self.identity_advice.setToolTip(
             "지원 형식: " + (", ".join(identity.document_formats) or "미확인")
         )
+        # 호환성 확인과 설치 안내는 실제 I/O가 없어도 메인 스레드를 막지 않습니다.
+        install_worker = Worker(lambda: (
+            generation, device, self.installer.plan(identity)
+        ))
+        install_worker.signals.finished.connect(self._install_plan_ready)
+        install_worker.signals.failed.connect(
+            lambda message, expected=generation, selected=device:
+                self._install_plan_failed(expected, selected, message)
+        )
+        self.pool.start(install_worker)
         self.recommendation_summary.setText("설치된 드라이버와 비교 중…")
         worker = Worker(lambda: (
             generation, device, self.advisor.advise(device, identity)
@@ -288,6 +334,111 @@ class PrinterSetupWidget(QWidget):
                 self._recommendation_failed(expected, selected, message)
         )
         self.pool.start(worker)
+
+    def _reset_install_panel(self):
+        self.official_support_label.setText("프린터 모델의 공식 지원 페이지를 확인합니다.")
+        self.official_support_button.setEnabled(False)
+        self.official_support_button.setToolTip("")
+        self.install_status_label.setText("배포판 패키지 지원 여부를 확인하는 중…")
+        self.install_button.setEnabled(False)
+
+    def _install_plan_ready(self, result):
+        generation, device, plan = result
+        if generation != self.identity_generation or device != self.current_device:
+            return
+        self.install_plan = plan
+        self.official_support_label.setText(
+            (plan.support_title + " · " if plan.support_title else "") + plan.support_note
+        )
+        self.official_support_button.setEnabled(plan.support_url is not None)
+        self.official_support_button.setToolTip(plan.support_url or "")
+        self.install_status_label.setText(plan.package_note)
+        self.install_button.setEnabled(plan.can_install and not self._install_busy)
+        self.install_button.setText(
+            f"{plan.package} 설치" if plan.package else "확인된 배포판 드라이버 없음"
+        )
+
+    def _install_plan_failed(self, generation, device, message):
+        if generation != self.identity_generation or device != self.current_device:
+            return
+        self.install_plan = None
+        self.official_support_button.setEnabled(False)
+        self.install_button.setEnabled(False)
+        self.install_status_label.setText("드라이버 설치 경로 확인 실패: " + message[:250])
+
+    def _open_official_support(self):
+        plan = self.install_plan
+        identity = self.identity_result
+        if plan is None or identity is None or not plan.support_url:
+            return
+        # 열리는 주소를 UI 표시 값이 아닌 공식 주소 허용 목록과 대조합니다.
+        _, allowed_url, _ = official_support_for(identity)
+        if plan.support_url != allowed_url:
+            return
+        if not QDesktopServices.openUrl(QUrl(plan.support_url)):
+            self.status.setText("브라우저를 열지 못했습니다. URL을 확인해 주세요.")
+
+    def install_driver(self):
+        plan = self.install_plan
+        identity = self.identity_result
+        device = self.current_device
+        if (
+            self._install_busy or identity is None or device is None
+            or plan is None or not plan.can_install
+        ):
+            return
+        command = (
+            f"sudo -n apt-get install -y --no-install-recommends {plan.package}"
+        )
+        confirmation = (
+            f"현재 확인된 프린터 모델: {identity.name}\n"
+            f"설치할 배포판 패키지: {plan.package}\n"
+            f"실행 명령:\n{command}\n\n"
+            "현재 설정된 Debian/Ubuntu APT 저장소에서 설치합니다. "
+            "패키지 설치가 프린터 출력 성공을 보증하지 않습니다.\n"
+            "설치 작업만 승인하며 프린터 등록·인쇄는 진행하지 않습니다.\n\n"
+            "설치할까요?"
+        )
+        answer = QMessageBox.question(
+            self, "드라이버 설치 승인", confirmation,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self._install_busy = True
+        self.install_button.setEnabled(False)
+        self.install_status_label.setText("승인된 배포판 드라이버를 설치 중입니다…")
+        generation = self.identity_generation
+        worker = Worker(lambda: self.installer.install(identity, plan, approved=True))
+        worker.signals.finished.connect(
+            lambda message, expected=generation, selected=device:
+                self._driver_install_finished(expected, selected, message)
+        )
+        worker.signals.failed.connect(
+            lambda message, expected=generation, selected=device:
+                self._driver_install_failed(expected, selected, message)
+        )
+        self.pool.start(worker)
+
+    def _driver_install_finished(self, generation, device, message):
+        self._install_busy = False
+        if generation != self.identity_generation or device != self.current_device:
+            return
+        self.status.setText(message)
+        QMessageBox.information(self, "배포판 드라이버 설치 확인", message)
+        self.identify_current()
+
+    def _driver_install_failed(self, generation, device, message):
+        self._install_busy = False
+        if generation != self.identity_generation or device != self.current_device:
+            return
+        self.install_status_label.setText(
+            "드라이버 설치 실패: " + message[:400]
+        )
+        self.install_button.setEnabled(False)
+        self.status.setText("설치를 다시 진행하려면 모델 정보를 다시 확인하세요.")
+        QMessageBox.warning(self, "드라이버 설치 실패", message)
 
     def _recommendation_ready(self, result):
         generation, device, recommendation = result
