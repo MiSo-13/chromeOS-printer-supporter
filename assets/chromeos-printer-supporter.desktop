@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PrintHub
+Name[ko]=PrintHub 프린터 관리자
+Comment=ChromeOS Crostini 프린터 및 인쇄 대기열 관리
+Exec=chromeos-printer-supporter
+Terminal=false
+Categories=Utility;Office;
+Icon=printer

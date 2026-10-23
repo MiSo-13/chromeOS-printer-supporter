@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chromeos-printer-supporter"
+version = "0.1.0"
+description = "ChromeOS Crostini용 CUPS 프린터 관리 앱"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["PyQt6>=6.6,<7"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+chromeos-printer-supporter = "printer_supporter.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

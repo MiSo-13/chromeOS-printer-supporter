@@ -1,5 +1,63 @@
-# ChromeOS Printer Supporter
+# PrintHub · ChromeOS Printer Supporter
 
-ChromeOS(Crostini)에서 CUPS 프린터를 관리하고 문서를 출력하는 PyQt 애플리케이션입니다.
+ChromeOS의 Linux(Crostini)에서 실행하는 PyQt6 기반 CUPS 프린터 관리자입니다.
+첫 번째 검증 모델은 **Samsung SL-M2030W / Samsung M203x Series**입니다. 특정 모델에 종속되지 않도록 기존 CUPS 큐를 탐색해 사용합니다.
 
-기능 개발은 별도의 브랜치와 Pull Request로 진행합니다.
+## 제공 기능
+
+- 등록된 CUPS 프린터 조회, 상태 및 오류 내용 표시 (5초마다 갱신)
+- PDF, TXT, PNG/JPEG/TIFF/GIF 파일 인쇄
+- Word(`.doc`, `.docx`), Excel(`.xls`, `.xlsx`), PowerPoint(`.ppt`, `.pptx`) 및 ODF 문서 인쇄 (LibreOffice로 임시 PDF 변환)
+- A4/Letter, 인쇄 매수 지정
+- 현재 CUPS 큐의 작업 조회 및 **내 작업** 취소
+- 원본 문서를 수정하지 않고 작업별 인쇄 옵션 지정
+
+> ChromeOS 브라우저의 Ctrl+P 통합은 지원 범위가 아닙니다. 앱을 실행해 문서를 선택하는 방식입니다.
+
+## Crostini 설치
+
+먼저 프린터가 CUPS에 등록되어 실제 출력되는지 확인합니다.
+
+```bash
+sudo apt update
+sudo apt install -y cups cups-client libreoffice python3-venv
+lpstat -p -d
+```
+
+프로젝트를 받은 폴더에서:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e .
+.venv/bin/chromeos-printer-supporter
+```
+
+앱을 ChromeOS Linux 앱 런처에 등록하려면 설치된 명령의 절대 경로를 확인한 뒤 `.desktop` 파일의 `Exec`를 해당 경로로 수정하고 `~/.local/share/applications/`에 복사하세요.
+
+## 파일 형식과 실행 방식
+
+| 형식 | 처리 |
+|---|---|
+| PDF, 텍스트, 이미지 | CUPS `lp`로 직접 전송 |
+| Office, ODF, RTF | LibreOffice headless로 임시 PDF 변환 후 CUPS 전송 |
+
+문서 변환에 실패하면 인쇄 작업을 전송하지 않습니다. Office 문서의 레이아웃은 LibreOffice 호환성에 영향을 받을 수 있으므로 중요한 문서는 미리 PDF로 확인하는 것이 좋습니다.
+
+## 대기열 및 오류의 한계
+
+- CUPS가 처리하는 작업만 표시됩니다. 다른 Windows PC가 프린터에 직접 전송한 작업은 표시되지 않을 수 있습니다.
+- TCP 9100 프린터는 용지 없음·토너 부족 같은 장치 오류가 CUPS에 모두 전달되지 않을 수 있습니다.
+- '대기' 및 작업 목록 제거는 실제 종이 출력 완료를 보증하지 않습니다.
+- 회사 공용 프린터의 전역 설정은 변경하지 않습니다. 앱은 `lpadmin`을 실행하지 않습니다.
+
+## 개발 및 검증
+
+```bash
+python3 -m pip install -e '.[test]'
+python3 -m compileall -q src tests
+pytest -q
+```
+
+## 다음 단계
+
+프린터별 기능 조회, 용지 종류 자동 인식, 정확한 장치 오류 모니터링(IPP/SNMP), 테스트 페이지, 배포 패키지를 차례로 확장할 예정입니다.
