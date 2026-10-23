@@ -1,6 +1,11 @@
 """ChromeOS Printer Supporter 데스크톱 UI 공통 스타일."""
 
 APP_STYLESHEET = """
+QWidget#documentPreview, QScrollArea#previewScroll { background: #edf1f5; border: none; border-radius: 6px; }
+QLabel#previewPlaceholder { background: #edf1f5; color: #56677a; padding: 16px; border-radius: 6px; }
+QLabel#previewImage { background: #ffffff; }
+QPlainTextEdit#previewText { background: #ffffff; color: #25313c; border: 1px solid #dce2e8; border-radius: 6px; padding: 12px; }
+
 QLabel#dropHint { color: #556477; font-size: 12px; padding: 6px 2px; }
 
 QLabel#diagnosisSummary { font-size: 15px; font-weight: 600; padding: 12px; background: #e8f0f9; border-radius: 7px; }
@@ -44,6 +49,11 @@ QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
 """
 
 DARK_STYLESHEET = """
+QWidget#documentPreview, QScrollArea#previewScroll { background: #303843; border: none; border-radius: 6px; }
+QLabel#previewPlaceholder { background: #303843; color: #c0cad5; padding: 16px; border-radius: 6px; }
+QLabel#previewImage { background: #ffffff; }
+QPlainTextEdit#previewText { background: #242b34; color: #e1e6ed; border: 1px solid #3b4551; border-radius: 6px; padding: 12px; }
+
 QLabel#dropHint { color: #b8c4d1; font-size: 12px; padding: 6px 2px; }
 
 QLabel#diagnosisSummary { font-size: 15px; font-weight: 600; padding: 12px; color: #dbeafe; background: #263d57; border-radius: 7px; }

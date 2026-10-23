@@ -34,3 +34,19 @@ def render_pdf_page(path: Path, index: int, *, scale: float = 1.15) -> bytes:
             raise ValueError("페이지 번호가 올바르지 않습니다.")
         pixmap = document[index].get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
         return pixmap.tobytes("png")
+
+
+MAX_TEXT_PREVIEW_BYTES = 128 * 1024
+
+
+def read_text_preview(path: Path) -> str:
+    """큰 텍스트 파일을 전부 메모리에 올리지 않고 앞부분만 미리 봅니다."""
+    with Path(path).open("rb") as stream:
+        data = stream.read(MAX_TEXT_PREVIEW_BYTES + 1)
+    excerpt = data[:MAX_TEXT_PREVIEW_BYTES]
+    if b"\x00" in excerpt:
+        raise ValueError("이 파일은 일반 텍스트로 표시할 수 없습니다.")
+    content = excerpt.decode("utf-8-sig", errors="replace")
+    if len(data) > MAX_TEXT_PREVIEW_BYTES:
+        content += "\n\n[미리보기는 앞부분 128KB까지만 표시합니다.]"
+    return content
