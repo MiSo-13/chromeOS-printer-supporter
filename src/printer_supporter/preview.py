@@ -44,9 +44,9 @@ def read_text_preview(path: Path) -> str:
     with Path(path).open("rb") as stream:
         data = stream.read(MAX_TEXT_PREVIEW_BYTES + 1)
     excerpt = data[:MAX_TEXT_PREVIEW_BYTES]
-    if b"\\x00" in excerpt:
+    if b"\x00" in excerpt:
         raise ValueError("이 파일은 일반 텍스트로 표시할 수 없습니다.")
     content = excerpt.decode("utf-8-sig", errors="replace")
     if len(data) > MAX_TEXT_PREVIEW_BYTES:
-        content += "\\n\\n[미리보기는 앞부분 128KB까지만 표시합니다.]"
+        content += "\n\n[미리보기는 앞부분 128KB까지만 표시합니다.]"
     return content
