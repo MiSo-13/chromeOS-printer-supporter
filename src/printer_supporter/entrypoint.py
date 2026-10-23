@@ -10,7 +10,10 @@ def smoke_test() -> int:
     """패키징된 Qt UI만 점검합니다. CUPS 명령·설치·출력은 호출하지 않습니다."""
     from PyQt6.QtWidgets import QApplication
     from printer_supporter.main import MainWindow
+    from printer_supporter.qt_platform import _xcb_plugin
 
+    if getattr(sys, "frozen", False) and _xcb_plugin() is None:
+        raise RuntimeError("Crostini X11(xcb) 플랫폼 플러그인이 번들에 없습니다.")
     app = QApplication([])
     original_refresh = MainWindow.refresh_all
     original_check = MainWindow.check_dependencies
