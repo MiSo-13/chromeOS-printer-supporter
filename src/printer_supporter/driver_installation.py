@@ -20,6 +20,7 @@ OFFICIAL_SUPPORT = {
     "Brother": ("Brother 지원 및 다운로드", "https://www.brother-korea.com/ko-kr/support"),
     "HP": ("HP 프린터 드라이버 지원", "https://support.hp.com/us-en/drivers/printers"),
     "Canon": ("Canon 글로벌 지원", "https://global.canon/en/support/"),
+    "Epson": ("Epson Korea 고객지원", "https://www.epson.co.kr/sl/s"),
 }
 
 SAMSUNG_SL_M2030W = "https://www.samsung.com/sec/support/model/SL-M2030W/"
