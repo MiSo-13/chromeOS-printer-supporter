@@ -701,6 +701,11 @@ class MainWindow(QMainWindow):
     def _load_preview(self):
         self.preview_index = 0
         self.preview_count = 0
+        # 새 문서를 열면 이전 파일의 확대 배율을 이어받지 않습니다.
+        self.zoom_box.blockSignals(True)
+        self.zoom_box.setCurrentIndex(0)
+        self.zoom_box.blockSignals(False)
+        self.preview_view.set_zoom("fit")
         self.preview_view.clear("미리보기를 불러오는 중…")
         self._set_preview_navigation(False)
         if self.selected_file is None:
