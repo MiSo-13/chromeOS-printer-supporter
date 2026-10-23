@@ -273,21 +273,21 @@ class PrinterSetupWidget(QWidget):
             ),
         )
 
-    def _background(self, operation, callback):
+    def _background(self, operation, callback, failed=None):
         worker = Worker(operation)
         worker.signals.finished.connect(callback)
-        worker.signals.failed.connect(self._error)
+        worker.signals.failed.connect(failed or self._error)
         self.pool.start(worker)
 
     def _error(self, message: str):
+        """일반 오류는 현재 검색·등록 작업 상태를 변경하지 않습니다."""
         self.status.setText("오류: " + message)
-        self._scan_busy = False
-        self._register_busy = False
-        self.scan_button.setEnabled(True)
-        self.register_button.setEnabled(
-            self.current_device is not None and not self._register_busy
-        )
         QMessageBox.warning(self, "프린터 설정 오류", message)
+
+    def _registration_failed(self, message: str):
+        self._register_busy = False
+        self.register_button.setEnabled(self.current_device is not None)
+        self._error(message)
 
     def _search_failed(self, message: str):
         self._scan_busy = False
@@ -724,10 +724,14 @@ class PrinterSetupWidget(QWidget):
         self._register_busy = True
         self.register_button.setEnabled(False)
         self.status.setText("CUPS 프린터를 등록 중입니다…")
-        self._background(
-            lambda: self.service.register(registration, approved=True),
-            self._registered,
-        )
+        try:
+            self._background(
+                lambda: self.service.register(registration, approved=True),
+                self._registered,
+                self._registration_failed,
+            )
+        except Exception as exc:
+            self._registration_failed(str(exc))
 
     def _registered(self, result):
         self._register_busy = False
