@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices
@@ -13,7 +14,7 @@ from PyQt6.QtWidgets import (
 
 from .discovery import (
     DiscoveredPrinter, DiscoveryService, PrinterRegistrationError,
-    Registration, manual_printer, validate_registration,
+    Registration, manual_printer, validate_registration, registration_command,
 )
 from .identification import PrinterIdentity, identify_printer, unknown_identity
 from .dialogs import confirm_action, show_guide
@@ -728,8 +729,7 @@ class PrinterSetupWidget(QWidget):
             f"PPD 파일: {registration.ppd_path or '-'}\n\n"
             f"{driver_warning}"
             "실행 작업: Crostini CUPS에 새 로컬 프린터 큐 등록\n"
-            "실행 명령: sudo -n lpadmin -p <프린터 이름> -E -v <연결 URI> "
-            "-o printer-is-shared=false (-m 또는 -P)\n"
+            f"실행 명령: {shlex.join(registration_command(registration))}\n"
             "기존 프린터 큐를 덮어쓰거나 기본 프린터를 변경하지 않습니다.\n"
             "프린터로 실제 문서를 보내지는 않습니다."
         )
