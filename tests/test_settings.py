@@ -30,3 +30,10 @@ def test_stylesheet_selection():
     assert stylesheet_for("light") == APP_STYLESHEET
     assert stylesheet_for("dark") == DARK_STYLESHEET
     assert APP_STYLESHEET != DARK_STYLESHEET
+
+
+def test_dark_theme_button_contrast_rules():
+    assert "QPushButton { background: #303a46; color: #f1f5f9;" in DARK_STYLESHEET
+    assert "QPushButton:hover { background: #3b4a5b; color: #ffffff;" in DARK_STYLESHEET
+    assert "QComboBox QAbstractItemView { background: #242b34; color: #f1f5f9;" in DARK_STYLESHEET
+    assert "QPushButton#primaryButton { background: #357bbd; color: white;" in DARK_STYLESHEET
