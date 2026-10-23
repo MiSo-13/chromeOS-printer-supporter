@@ -19,7 +19,7 @@ def test_native_window_file_settings_menu_and_theme_persistence(tmp_path):
         app = QApplication([])
 
         # UI를 실제 생성하되 CUPS 요청이나 시스템 패키지 점검은 호출하지 않습니다.
-        with patch.object(MainWindow, "refresh_all", lambda self: None), \\
+        with patch.object(MainWindow, "refresh_all", lambda self: None), \
              patch.object(MainWindow, "check_dependencies", lambda self, **kw: None):
             window = MainWindow()
             window.timer.stop()
@@ -88,7 +88,7 @@ def test_theme_write_error_restores_selected_menu_item(tmp_path):
         from printer_supporter.main import MainWindow
 
         app = QApplication([])
-        with patch.object(MainWindow, "refresh_all", lambda self: None), \\
+        with patch.object(MainWindow, "refresh_all", lambda self: None), \
              patch.object(MainWindow, "check_dependencies", lambda self, **kw: None):
             window = MainWindow()
             window.timer.stop()
