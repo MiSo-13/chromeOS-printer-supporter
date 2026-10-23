@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .backend import CupsService, PrintError, PrintJob, SUPPORTED_EXTENSIONS
+from .capabilities import feature_options
 from .setup_ui import PrinterSetupWidget
 from .dependencies import CUPS, LIBREOFFICE, DependencyManager
 
@@ -58,6 +59,9 @@ class MainWindow(QMainWindow):
         self.current_jobs: list[PrintJob] = []
         self.completed_jobs: list[PrintJob] = []
         self.queue_generation = 0
+        self.option_generation = 0
+        self.option_printer = ""
+        self.option_keys: dict[str, str] = {}
         self.setWindowTitle("PrintHub · ChromeOS 프린터 관리자")
         self.resize(820, 680)
 
@@ -75,6 +79,7 @@ class MainWindow(QMainWindow):
         selection.addWidget(QLabel("프린터"))
         self.printer_box = QComboBox()
         self.printer_box.currentTextChanged.connect(self.refresh_jobs)
+        self.printer_box.currentTextChanged.connect(self.refresh_options)
         selection.addWidget(self.printer_box, 1)
         refresh = QPushButton("새로고침")
         refresh.clicked.connect(self.refresh_all)
@@ -102,12 +107,35 @@ class MainWindow(QMainWindow):
         self.copies = QSpinBox()
         self.copies.setRange(1, 99)
         options.addWidget(self.copies)
-        options.addWidget(QLabel("용지"))
-        self.paper = QComboBox()
-        self.paper.addItems(["A4", "Letter"])
-        options.addWidget(self.paper)
         options.addStretch()
         print_layout.addLayout(options)
+
+        # 지원하지 않거나 알려지지 않은 옵션은 프린터 기본값을 사용합니다.
+        from PyQt6.QtWidgets import QFormLayout
+        option_form = QFormLayout()
+        self.paper = QComboBox()
+        self.color_mode = QComboBox()
+        self.duplex_mode = QComboBox()
+        self.quality_mode = QComboBox()
+        self.resolution_mode = QComboBox()
+        self.option_controls = {
+            "paper": self.paper,
+            "color": self.color_mode,
+            "duplex": self.duplex_mode,
+            "quality": self.quality_mode,
+            "resolution": self.resolution_mode,
+        }
+        option_labels = {
+            "paper": "용지", "color": "흑백 / 컬러", "duplex": "단면 / 양면",
+            "quality": "인쇄 품질", "resolution": "해상도",
+        }
+        for feature, control in self.option_controls.items():
+            control.addItem("프린터 기본값", None)
+            control.setEnabled(False)
+            option_form.addRow(option_labels[feature], control)
+        print_layout.addLayout(option_form)
+        self.option_info = QLabel("프린터 옵션을 확인 중입니다…")
+        print_layout.addWidget(self.option_info)
         print_actions = QHBoxLayout()
         self.print_button = QPushButton("인쇄하기")
         self.print_button.clicked.connect(self.print_selected)
@@ -233,6 +261,63 @@ class MainWindow(QMainWindow):
         selected = next((p for p in printers if p.name == self.printer_box.currentText()), None)
         self.status.setText(f"{selected.name}: {selected.state}" if selected else "등록된 CUPS 프린터 없음")
         self.refresh_jobs()
+        if selected and self.option_printer != selected.name:
+            self.refresh_options(selected.name)
+
+    def refresh_options(self, printer: str | None = None):
+        printer = printer if isinstance(printer, str) else self.printer_box.currentText()
+        self.option_generation += 1
+        generation = self.option_generation
+        self.option_printer = printer
+        self.option_keys = {}
+        for control in self.option_controls.values():
+            control.clear()
+            control.addItem("프린터 기본값", None)
+            control.setEnabled(False)
+        if not printer:
+            self.option_info.setText("프린터를 선택해 주세요.")
+            return
+        self.option_info.setText(f"{printer} 지원 옵션 조회 중…")
+        task = Task(lambda: (printer, generation, self.service.printer_options(printer)))
+        task.signals.finished.connect(self._populate_options)
+        task.signals.failed.connect(
+            lambda message: self._options_failed(printer, generation, message)
+        )
+        self.pool.start(task)
+
+    def _options_failed(self, printer: str, generation: int, message: str):
+        if printer == self.printer_box.currentText() and generation == self.option_generation:
+            self.option_info.setText(
+                f"지원 옵션을 조회하지 못했습니다: {message} · 프린터 기본값으로 인쇄합니다."
+            )
+
+    def _populate_options(self, result):
+        printer, generation, options = result
+        if printer != self.printer_box.currentText() or generation != self.option_generation:
+            return
+        supported = feature_options(options)
+        self.option_keys = {feature: option.key for feature, option in supported.items()}
+        for feature, option in supported.items():
+            control = self.option_controls[feature]
+            control.clear()
+            default_index = 0
+            for index, choice in enumerate(option.choices):
+                control.addItem(choice.value, choice.value)
+                if choice.default:
+                    default_index = index
+            control.setCurrentIndex(default_index)
+            control.setEnabled(len(option.choices) > 1)
+        self.option_info.setText(
+            f"{printer}: 지원 옵션 {len(supported)}종 감지 · 미지원 항목은 기본값을 사용합니다."
+        )
+
+    def _selected_print_options(self) -> dict[str, str]:
+        selection = {}
+        for feature, key in self.option_keys.items():
+            value = self.option_controls[feature].currentData()
+            if value is not None:
+                selection[key] = value
+        return selection
 
     def refresh_jobs(self, *_):
         printer = self.printer_box.currentText()
@@ -349,11 +434,12 @@ class MainWindow(QMainWindow):
         if not printer:
             self.show_error("테스트할 프린터를 먼저 선택해 주세요.")
             return
-        media = self.paper.currentText()
+        media = self.paper.currentData()
+        selected_options = self._selected_print_options()
         answer = QMessageBox.question(
             self,
             "테스트 페이지 인쇄",
-            f"'{printer}' 프린터로 {media} 테스트 페이지 1장을 출력할까요?\n"
+            f"'{printer}' 프린터로 {media or '기본 용지'} 테스트 페이지 1장을 출력할까요?\n"
             "회사 공용 프린터에서 실제 종이가 출력될 수 있습니다.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -364,7 +450,7 @@ class MainWindow(QMainWindow):
 
         def operation():
             try:
-                return (True, self.service.print_test_page(printer, media=media))
+                return (True, self.service.print_test_page(printer, media=media, options=selected_options))
             except Exception as exc:
                 return (False, str(exc))
 
@@ -394,10 +480,11 @@ class MainWindow(QMainWindow):
             return
         self.print_button.setEnabled(False)
         source, printer = self.selected_file, self.printer_box.currentText()
-        copies, paper = self.copies.value(), self.paper.currentText()
+        copies, paper = self.copies.value(), self.paper.currentData()
+        selected_options = self._selected_print_options()
         def print_operation():
             try:
-                return (True, self.service.print_file(source, printer, copies=copies, media=paper))
+                return (True, self.service.print_file(source, printer, copies=copies, media=paper, options=selected_options))
             except Exception as exc:
                 return (False, str(exc))
 
