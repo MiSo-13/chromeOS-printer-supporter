@@ -1,6 +1,13 @@
-"""PrintHub 데스크톱 UI 공통 스타일."""
+"""ChromeOS Printer Supporter 데스크톱 UI 공통 스타일."""
 
 APP_STYLESHEET = """
+QLabel#appTitle { font-size: 15px; font-weight: 600; color: #35465a; padding: 2px 0; }
+QLabel#appCredit { color: #718092; font-size: 11px; padding: 2px 4px; }
+QGroupBox { padding-top: 18px; }
+QComboBox, QSpinBox, QLineEdit { min-height: 24px; }
+QPushButton { min-height: 24px; }
+QListWidget::item { padding: 6px 8px; }
+
 QLabel#sidebarCaption { color: #556477; font-size: 12px; }
 QComboBox#themeSelector { min-width: 80px; }
 QComboBox QAbstractItemView { background: #ffffff; color: #25313c; selection-background-color: #d4e2f4; selection-color: #174c85; }
@@ -32,6 +39,13 @@ QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
 """
 
 DARK_STYLESHEET = """
+QLabel#appTitle { font-size: 15px; font-weight: 600; color: #dce5ef; padding: 2px 0; }
+QLabel#appCredit { color: #a6b3c2; font-size: 11px; padding: 2px 4px; }
+QGroupBox { padding-top: 18px; }
+QComboBox, QSpinBox, QLineEdit { min-height: 24px; }
+QPushButton { min-height: 24px; }
+QListWidget::item { padding: 6px 8px; }
+
 QLabel#sidebarCaption { color: #b8c4d1; font-size: 12px; }
 QComboBox#themeSelector { min-width: 80px; }
 QComboBox QAbstractItemView { background: #242b34; color: #f1f5f9; selection-background-color: #365778; selection-color: #ffffff; }
