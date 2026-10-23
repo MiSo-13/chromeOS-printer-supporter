@@ -43,7 +43,7 @@ class SettingsStore:
             with NamedTemporaryFile("w", encoding="utf-8", dir=self.path.parent, prefix=".settings-", suffix=".tmp", delete=False) as stream:
                 temp_path = Path(stream.name)
                 json.dump(updated, stream, ensure_ascii=False, indent=2)
-                stream.write("\\n")
+                stream.write(chr(10))
             os.replace(temp_path, self.path)
         finally:
             if temp_path is not None:
