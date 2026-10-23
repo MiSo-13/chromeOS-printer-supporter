@@ -26,12 +26,13 @@ from PyQt6.QtWidgets import (
     QSpinBox, QTabWidget, QTextEdit, QPlainTextEdit, QVBoxLayout, QWidget, QLineEdit, QGroupBox, QStackedWidget, QFrame,
 )
 
-from .backend import CupsService, PrintError, PrintJob, SUPPORTED_EXTENSIONS
+from .backend import CupsService, PrintError, PrintJob, SUPPORTED_EXTENSIONS, OFFICE_EXTENSIONS
 from .capabilities import feature_options
 from .diagnostics import diagnose_printer
 from .document_input import local_document_from_mime, supported_document
 from .preview import normalize_page_ranges, pdf_page_count, render_pdf_page, read_text_preview
 from .preview_widget import DocumentPreview, read_image
+from .office_preview import ConvertedOfficePreview, convert_office_preview
 from .settings import SettingsStore
 from .theme import stylesheet_for
 from .setup_ui import PrinterSetupWidget
@@ -94,6 +95,9 @@ class MainWindow(QMainWindow):
         self.dependency_manager = dependency_manager or DependencyManager()
         self.pool = QThreadPool.globalInstance()
         self.selected_file: Path | None = None
+        self._preview_generation = 0
+        self._preview_pdf_path: Path | None = None
+        self._office_preview: ConvertedOfficePreview | None = None
         self.current_jobs: list[PrintJob] = []
         self.completed_jobs: list[PrintJob] = []
         self.queue_generation = 0
@@ -214,6 +218,10 @@ class MainWindow(QMainWindow):
         self.zoom_box.currentIndexChanged.connect(self._change_preview_zoom)
         navigation.addWidget(self.zoom_box)
         preview_layout.addLayout(navigation)
+        self.preview_retry_button = QPushButton("미리보기 다시 시도")
+        self.preview_retry_button.setVisible(False)
+        self.preview_retry_button.clicked.connect(self._load_preview)
+        preview_layout.addWidget(self.preview_retry_button)
         document_layout.addWidget(preview_group, 1)
         self.preview_index = 0
         self.preview_count = 0
@@ -385,6 +393,10 @@ class MainWindow(QMainWindow):
         return super().eventFilter(watched, event)
 
     def closeEvent(self, event):
+        # 이벤트 테스트에서 __init__ 없이 생성한 최소 Qt 창도 안전하게 종료합니다.
+        if hasattr(self, "_preview_generation"):
+            self._preview_generation += 1
+            self._release_office_preview()
         QApplication.instance().removeEventFilter(self)
         super().closeEvent(event)
 
@@ -463,6 +475,10 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "패키지 설치 완료", message)
         self.status.setText(message)
         self.refresh_all()
+        if (self.selected_file is not None
+                and self.selected_file.suffix.lower() in OFFICE_EXTENSIONS
+                and self._preview_pdf_path is None):
+            self._load_preview()
 
     def show_error(self, message: str):
         self.status.setText(f"오류: {message}")
@@ -698,7 +714,16 @@ class MainWindow(QMainWindow):
     def _change_preview_zoom(self, _index: int):
         self.preview_view.set_zoom(self.zoom_box.currentData())
 
+    def _release_office_preview(self):
+        self._preview_pdf_path = None
+        if self._office_preview is not None:
+            self._office_preview.close()
+            self._office_preview = None
+
     def _load_preview(self):
+        self._preview_generation += 1
+        self._release_office_preview()
+        self.preview_retry_button.setVisible(False)
         self.preview_index = 0
         self.preview_count = 0
         # 새 문서를 열면 이전 파일의 확대 배율을 이어받지 않습니다.
@@ -715,6 +740,7 @@ class MainWindow(QMainWindow):
         suffix = self.selected_file.suffix.lower()
         if suffix == ".pdf":
             try:
+                self._preview_pdf_path = self.selected_file
                 self.preview_count = pdf_page_count(self.selected_file)
                 if self.preview_count == 0:
                     raise ValueError("페이지가 없는 PDF입니다.")
@@ -734,26 +760,63 @@ class MainWindow(QMainWindow):
                 self.preview_view.show_text(read_text_preview(self.selected_file))
             except Exception as exc:
                 self.preview_view.clear(f"텍스트 미리보기를 열 수 없습니다: {exc}")
-        else:
-            self.preview_view.clear(
-                "Office 문서 미리보기는 아직 지원하지 않습니다. "
-                "인쇄 전에 PDF로 변환해 내용을 확인해 주세요."
+        elif suffix in OFFICE_EXTENSIONS:
+            if not self.dependency_manager.installed(LIBREOFFICE):
+                self.preview_view.clear(
+                    "Office 미리보기에는 LibreOffice가 필요합니다. "
+                    "환경 점검에서 설치한 뒤 '미리보기 다시 시도'를 누르세요."
+                )
+                self.preview_retry_button.setVisible(True)
+                return
+            source = self.selected_file
+            generation = self._preview_generation
+            self.preview_view.clear("LibreOffice로 미리보기용 PDF를 만드는 중…")
+            task = Task(lambda: (generation, source, convert_office_preview(source)))
+            task.signals.finished.connect(self._office_preview_ready)
+            task.signals.failed.connect(
+                lambda error, expected=generation: self._office_preview_failed(expected, error)
             )
+            self.pool.start(task)
+        else:
+            self.preview_view.clear("이 파일 형식의 미리보기를 지원하지 않습니다.")
+
+    def _office_preview_ready(self, result):
+        generation, source, converted = result
+        if generation != self._preview_generation or source != self.selected_file:
+            converted.close()
+            return
+        self._office_preview = converted
+        self._preview_pdf_path = converted.pdf_path
+        self.preview_count = converted.page_count
+        self._show_preview_page(0)
+
+    def _office_preview_failed(self, generation: int, error: str):
+        if generation != self._preview_generation:
+            return
+        self.preview_count = 0
+        self._release_office_preview()
+        self.preview_view.clear(f"Office 미리보기 실패: {error}")
+        self._set_preview_navigation(False)
+        self.preview_retry_button.setVisible(True)
 
     def _show_preview_page(self, index: int):
-        if (self.selected_file is None or self.selected_file.suffix.lower() != ".pdf"
-                or not 0 <= index < self.preview_count):
+        if self._preview_pdf_path is None or not 0 <= index < self.preview_count:
             return
         try:
             image = QPixmap()
-            if not image.loadFromData(render_pdf_page(self.selected_file, index, scale=1.6)):
+            if not image.loadFromData(
+                render_pdf_page(self._preview_pdf_path, index, scale=1.6)
+            ):
                 raise ValueError("PDF 페이지 이미지를 표시할 수 없습니다.")
             self.preview_view.show_image(image)
             self.preview_index = index
             self._set_preview_navigation(True, can_zoom=True)
         except Exception as exc:
+            self._release_office_preview()
+            self.preview_count = 0
             self.preview_view.clear(f"PDF 미리보기 오류: {exc}")
             self._set_preview_navigation(False)
+            self.preview_retry_button.setVisible(True)
 
     def print_test_page(self):
         printer = self.printer_box.currentText()
