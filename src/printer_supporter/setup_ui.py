@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices
@@ -13,9 +14,10 @@ from PyQt6.QtWidgets import (
 
 from .discovery import (
     DiscoveredPrinter, DiscoveryService, PrinterRegistrationError,
-    Registration, manual_printer,
+    Registration, manual_printer, validate_registration, registration_command,
 )
 from .identification import PrinterIdentity, identify_printer, unknown_identity
+from .dialogs import confirm_action, show_guide
 from .support_catalog import assess_printer
 from .driver_recommendation import DriverAdvisor, DriverRecommendation
 from .driver_installation import (
@@ -69,6 +71,9 @@ class PrinterSetupWidget(QWidget):
         self._install_busy = False
         self._driver_user_edited = False
         self._queue_name_user_edited = False
+        self._search_info_seen = False
+        self._scan_busy = False
+        self._register_busy = False
 
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
@@ -82,30 +87,53 @@ class PrinterSetupWidget(QWidget):
         scroller.setWidget(content)
         outer_layout.addWidget(scroller)
 
-        layout.addWidget(QLabel("검색된 프린터 (CUPS / mDNS)"))
+        intro = QHBoxLayout()
+        title = QLabel("프린터 연결하기")
+        title.setObjectName("setupTitle")
+        intro.addWidget(title)
+        intro.addStretch()
+        self.help_button = QPushButton("사용 방법")
+        self.help_button.setObjectName("setupHelpButton")
+        self.help_button.clicked.connect(self.show_help)
+        intro.addWidget(self.help_button)
+        layout.addLayout(intro)
+        steps = QLabel("① 프린터 찾기    ② 모델 확인    ③ 드라이버 선택    ④ 등록")
+        steps.setObjectName("setupSteps")
+        steps.setWordWrap(True)
+        layout.addWidget(steps)
+
+        discovery_group = QGroupBox("1. 프린터 찾기")
+        discovery_group.setObjectName("setupStep")
+        discovery_layout = QVBoxLayout(discovery_group)
+        discovery_layout.addWidget(QLabel("같은 네트워크의 프린터를 찾거나 IP를 입력하세요."))
         scan_row = QHBoxLayout()
         scan_row.setSpacing(12)
-        self.scan_button = QPushButton("네트워크 프린터 검색")
+        self.scan_button = QPushButton("프린터 검색")
         self.scan_button.clicked.connect(self.search)
         scan_row.addWidget(self.scan_button)
         scan_row.addStretch()
-        layout.addLayout(scan_row)
+        discovery_layout.addLayout(scan_row)
 
         self.devices = QListWidget()
         self.devices.currentItemChanged.connect(self._select_discovered)
         self.devices.setMinimumHeight(100)
-        layout.addWidget(self.devices, 1)
+        discovery_layout.addWidget(self.devices)
+        manual_form = QFormLayout()
+        manual_form.setSpacing(8)
+        discovery_layout.addLayout(manual_form)
+        layout.addWidget(discovery_group)
 
-        details = QGroupBox("프린터 모델 자동 식별")
+        details = QGroupBox("2. 모델 확인")
+        details.setObjectName("setupStep")
         details_layout = QVBoxLayout(details)
         details_layout.setSpacing(6)
-        self.identity_summary = QLabel("프린터 선택 후 제조사·모델을 확인합니다.")
+        self.identity_summary = QLabel("프린터를 선택하면 모델을 확인합니다.")
         self.identity_summary.setWordWrap(True)
         details_layout.addWidget(self.identity_summary)
         self.identity_evidence = QLabel("정보 출처: 미확인")
         self.identity_evidence.setWordWrap(True)
         details_layout.addWidget(self.identity_evidence)
-        self.identity_advice = QLabel("IPP 속성 확인은 실제 인쇄 없이 조회합니다.")
+        self.identity_advice = QLabel("IPP 지원 여부 확인 전")
         self.identity_advice.setWordWrap(True)
         details_layout.addWidget(self.identity_advice)
         self.focus_summary = QLabel("우선 안내 모델 목록과 비교합니다.")
@@ -118,10 +146,14 @@ class PrinterSetupWidget(QWidget):
         self.focus_detail.setObjectName("focusSupportDetail")
         self.focus_detail.setWordWrap(True)
         details_layout.addWidget(self.focus_detail)
-        self.identify_button = QPushButton("모델 정보 다시 확인")
+        self.identify_button = QPushButton("다시 확인")
         self.identify_button.setEnabled(False)
         self.identify_button.clicked.connect(self.identify_current)
         details_layout.addWidget(self.identify_button)
+        self.details_toggle = QPushButton("상세 정보 보기")
+        self.details_toggle.setCheckable(True)
+        self.details_toggle.toggled.connect(self._toggle_details)
+        details_layout.addWidget(self.details_toggle)
         layout.addWidget(details)
 
         form = QFormLayout()
@@ -129,21 +161,22 @@ class PrinterSetupWidget(QWidget):
         form.setVerticalSpacing(12)
         self.ip_input = QLineEdit()
         self.ip_input.setPlaceholderText("예: 192.168.6.147")
-        form.addRow("IP 직접 입력", self.ip_input)
+        manual_form.addRow("IP 주소", self.ip_input)
         self.protocol = QComboBox()
         self.protocol.addItem("IPP (631) · 지원 여부 자동 확인", "ipp")
         self.protocol.addItem("Socket / JetDirect (9100)", "socket")
-        form.addRow("연결 방식", self.protocol)
+        manual_form.addRow("연결 방식", self.protocol)
         apply_ip = QPushButton("IP 주소 적용")
         apply_ip.clicked.connect(self.apply_manual)
-        form.addRow("", apply_ip)
+        manual_form.addRow("", apply_ip)
 
         self.uri = QLineEdit()
         self.uri.setReadOnly(True)
-        form.addRow("연결 URI", self.uri)
+        details_layout.addWidget(self.uri)
         self.queue_name = QLineEdit()
         self.queue_name.setPlaceholderText("예: Samsung_SL_M2030W")
-        form.addRow("CUPS 큐 이름", self.queue_name)
+        register_form = QFormLayout()
+        register_form.addRow("프린터 이름", self.queue_name)
         self.queue_name.textEdited.connect(self._queue_name_edited)
         self.driver = QComboBox()
         self.driver.addItem("IPP Everywhere (지원 확인 필요)", "everywhere")
@@ -159,7 +192,7 @@ class PrinterSetupWidget(QWidget):
         form.addRow("CUPS 모델", self.model_choice)
         self.recommendation_summary = QLabel("드라이버 추천: 프린터를 선택해 주세요.")
         self.recommendation_summary.setWordWrap(True)
-        form.addRow("자동 추천", self.recommendation_summary)
+        form.addRow("추천", self.recommendation_summary)
         self.recommendation_detail = QLabel(
             "드라이버 설치 없이 로컬 CUPS 목록을 검사합니다."
         )
@@ -187,7 +220,7 @@ class PrinterSetupWidget(QWidget):
         )
         install_note.setWordWrap(True)
         install_layout.addWidget(install_note)
-        layout.addWidget(self.install_panel)
+        # 설치 안내는 드라이버 선택 아래에 함께 배치합니다.
 
         self.ppd_path = QLineEdit()
         self.ppd_path.setPlaceholderText("삼성 ULD 등 설치된 PPD 파일 경로")
@@ -198,25 +231,71 @@ class PrinterSetupWidget(QWidget):
         ppd_button.clicked.connect(self.choose_ppd)
         ppd_row.addWidget(ppd_button)
         form.addRow("PPD 파일", ppd_row)
-        layout.addLayout(form)
+        driver_group = QGroupBox("3. 드라이버 선택")
+        driver_group.setObjectName("setupStep")
+        driver_layout = QVBoxLayout(driver_group)
+        driver_layout.addLayout(form)
+        driver_layout.addWidget(self.install_panel)
+        layout.addWidget(driver_group)
+
+        register_group = QGroupBox("4. 프린터 등록")
+        register_group.setObjectName("setupStep")
+        register_layout = QVBoxLayout(register_group)
+        register_layout.addLayout(register_form)
 
         actions = QHBoxLayout()
         actions.setSpacing(12)
         self.probe_button = QPushButton("연결 확인")
+        self.probe_button.setEnabled(False)
         self.probe_button.clicked.connect(self.probe)
         actions.addWidget(self.probe_button)
         self.register_button = QPushButton("이 프린터 등록")
+        self.register_button.setEnabled(False)
         self.register_button.clicked.connect(self.register)
         actions.addWidget(self.register_button)
-        layout.addLayout(actions)
-        self.status = QLabel("프린터를 검색하거나 IP 주소를 입력해 주세요.")
-        layout.addWidget(self.status)
-        note = QLabel("프린터 자체의 설정은 바꾸지 않습니다. 기존 CUPS 큐도 덮어쓰지 않습니다.")
-        note.setWordWrap(True)
-        layout.addWidget(note)
+        register_layout.addLayout(actions)
+        self.status = QLabel("먼저 프린터를 검색하세요.")
+        self.status.setObjectName("setupStatus")
+        self.status.setWordWrap(True)
+        register_layout.addWidget(self.status)
+        layout.addWidget(register_group)
+
+        self._optional_details = [
+            self.identity_evidence, self.identity_advice, self.focus_detail,
+            self.recommendation_detail, self.official_support_label, install_note,
+        ]
+        self._toggle_details(False)
         self._driver_changed()
         # lpinfo -v는 일부 Crostini CUPS에서 관리자 권한이 필요합니다.
         # 앱 시작 시 자동 실행하지 않고 사용자가 검색 버튼을 누를 때만 실행합니다.
+
+    def _toggle_details(self, expanded: bool):
+        for label in self._optional_details:
+            label.setVisible(expanded)
+        self.details_toggle.setText("상세 정보 접기" if expanded else "상세 정보 보기")
+
+    def show_help(self):
+        show_guide(
+            self, title="프린터 연결 방법",
+            summary="4단계로 프린터를 등록할 수 있습니다.",
+            details=(
+                "1. 프린터 찾기\n"
+                "  · '프린터 검색'을 눌러 같은 네트워크의 프린터를 찾습니다.\n"
+                "  · 검색되지 않으면 프린터 IP 주소를 입력하고 'IP 주소 적용'을 누릅니다.\n\n"
+                "2. 모델 확인\n"
+                "  · 프린터를 선택하면 모델과 연결 방식을 확인합니다.\n"
+                "  · IPP 정보가 없으면 이름이 추정치일 수 있습니다.\n\n"
+                "3. 드라이버 선택\n"
+                "  · 추천된 IPP Everywhere 또는 설치된 CUPS 모델을 확인합니다.\n"
+                "  · 필요하면 제조사의 PPD 파일을 직접 선택합니다.\n"
+                "  · 드라이버 패키지가 필요한 경우 설치 전에 명령과 영향 범위를 표시합니다.\n\n"
+                "4. 등록\n"
+                "  · 프린터 이름을 확인하고 '이 프린터 등록'을 누릅니다.\n"
+                "  · 등록 명령을 확인하고 직접 승인해야 CUPS에 등록됩니다.\n\n"
+                "참고: 검색과 모델 확인은 설정을 변경하거나 인쇄하지 않습니다.\n"
+                "지원 모델: README / docs/SUPPORTED_PRINTERS.md"
+            ),
+        )
 
     def _background(self, operation, callback):
         worker = Worker(operation)
@@ -226,11 +305,16 @@ class PrinterSetupWidget(QWidget):
 
     def _error(self, message: str):
         self.status.setText("오류: " + message)
+        self._scan_busy = False
+        self._register_busy = False
         self.scan_button.setEnabled(True)
-        self.register_button.setEnabled(True)
+        self.register_button.setEnabled(
+            self.current_device is not None and not self._register_busy
+        )
         QMessageBox.warning(self, "프린터 설정 오류", message)
 
     def _search_failed(self, message: str):
+        self._scan_busy = False
         self.scan_button.setEnabled(True)
         if "forbidden" in message.lower() or "not authorized" in message.lower():
             self.status.setText(
@@ -241,21 +325,45 @@ class PrinterSetupWidget(QWidget):
             self.status.setText(f"네트워크 검색 실패: {message} · IP 직접 입력은 가능합니다.")
 
     def search(self):
+        if self._scan_busy:
+            return
+        if not self._search_info_seen:
+            if not confirm_action(
+                self, title="프린터 검색",
+                summary="같은 네트워크에서 프린터를 찾습니다.",
+                details=(
+                    "실행 명령: lpinfo -v\n\n"
+                    "변경 사항: 없음\n"
+                    "Linux(Crostini)의 CUPS 장치 검색 결과를 읽습니다.\n"
+                    "프린터 등록, 드라이버 설치, 다운로드, 인쇄는 하지 않습니다.\n"
+                    "검색이 안 되면 IP 주소를 직접 입력할 수 있습니다."
+                ),
+                confirm_label="검색 시작",
+            ):
+                return
+            self._search_info_seen = True
+        self._scan_busy = True
         self.scan_button.setEnabled(False)
-        self.status.setText("CUPS에서 네트워크 프린터를 검색 중입니다…")
+        self.status.setText("프린터 검색 중…")
         worker = Worker(self.service.discover)
         worker.signals.finished.connect(self._populate)
         worker.signals.failed.connect(self._search_failed)
         self.pool.start(worker)
 
     def _populate(self, devices):
+        self._scan_busy = False
         self.scan_button.setEnabled(True)
         self.devices.clear()
         for device in devices:
             item = QListWidgetItem(f"{device.name}  ·  {device.scheme}")
             item.setData(Qt.ItemDataRole.UserRole, device)
             self.devices.addItem(item)
-        self.status.setText(f"검색 결과: {len(devices)}개 · 없으면 IP 주소를 직접 입력하세요.")
+        if len(devices) == 1:
+            self.devices.setCurrentRow(0)
+        self.status.setText(
+            f"{len(devices)}개 발견 · 프린터를 선택하세요." if devices
+            else "검색 결과가 없습니다. IP 주소를 입력해 보세요."
+        )
 
     def _select_discovered(self, current, previous):
         if current:
@@ -266,6 +374,8 @@ class PrinterSetupWidget(QWidget):
 
     def _select_device(self, device: DiscoveredPrinter):
         self.current_device = device
+        self.probe_button.setEnabled(True)
+        self.register_button.setEnabled(not self._register_busy)
         self._driver_user_edited = False
         self.driver_recommendation = None
         self.install_plan = None
@@ -320,7 +430,7 @@ class PrinterSetupWidget(QWidget):
         self.identify_button.setEnabled(True)
         self.identity_result = identity
         self.identity_summary.setText(
-            f"모델: {identity.name} · 제조사: {identity.manufacturer or '미확인'}"
+            f"{identity.name} · {identity.manufacturer or '제조사 미확인'}"
         )
         status = {
             "reported": "IPP Everywhere 기능 보고",
@@ -358,7 +468,7 @@ class PrinterSetupWidget(QWidget):
                     self._install_plan_failed(expected, selected, message)
             )
             self.pool.start(install_worker)
-        self.recommendation_summary.setText("설치된 드라이버와 비교 중…")
+        self.recommendation_summary.setText("드라이버 확인 중…")
         worker = Worker(lambda: (
             generation, device, self.advisor.advise(device, identity)
         ))
@@ -386,7 +496,11 @@ class PrinterSetupWidget(QWidget):
         )
         self.official_support_button.setEnabled(plan.support_url is not None)
         self.official_support_button.setToolTip(plan.support_url or "")
-        self.install_status_label.setText(plan.package_note)
+        self.install_status_label.setText(
+            f"{plan.package}: {plan.package_status}" if plan.package
+            else "자동 설치 후보 없음 · 공식 지원 페이지 확인"
+        )
+        self.install_status_label.setToolTip(plan.package_note)
         self.install_button.setEnabled(plan.can_install and not self._install_busy)
         self.install_button.setText(
             f"{plan.package} 설치" if plan.package else "확인된 배포판 드라이버 없음"
@@ -424,21 +538,21 @@ class PrinterSetupWidget(QWidget):
         command = (
             f"sudo -n apt-get install -y --no-install-recommends {plan.package}"
         )
-        confirmation = (
-            f"현재 확인된 프린터 모델: {identity.name}\n"
-            f"설치할 배포판 패키지: {plan.package}\n"
-            f"실행 명령:\n{command}\n\n"
-            "현재 설정된 Debian/Ubuntu APT 저장소에서 설치합니다. "
-            "패키지 설치가 프린터 출력 성공을 보증하지 않습니다.\n"
-            "설치 작업만 승인하며 프린터 등록·인쇄는 진행하지 않습니다.\n\n"
-            "설치할까요?"
-        )
-        answer = QMessageBox.question(
-            self, "드라이버 설치 승인", confirmation,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
+        if not confirm_action(
+            self, title="드라이버 설치 확인",
+            summary=f"{plan.package} 패키지를 설치할까요?",
+            details=(
+                f"프린터 모델: {identity.name}\n"
+                f"설치 패키지: {plan.package}\n"
+                f"실행 명령: {command}\n\n"
+                "설치 위치: Crostini Linux 컨테이너\n"
+                "패키지 출처: 현재 설정된 Debian/Ubuntu APT 저장소\n"
+                "영향: 패키지 및 의존성이 설치될 수 있습니다.\n"
+                "프린터 등록과 실제 인쇄는 하지 않습니다.\n"
+                "sudo 권한과 네트워크 연결이 필요합니다."
+            ),
+            confirm_label="설치",
+        ):
             return
         self._install_busy = True
         self.install_button.setEnabled(False)
@@ -494,19 +608,19 @@ class PrinterSetupWidget(QWidget):
 
         if recommendation.preferred == "everywhere":
             self.recommendation_summary.setText(
-                "추천: IPP Everywhere · " + recommendation.catalog_status
+                "추천: IPP Everywhere"
             )
         elif recommendation.preferred == "model":
             self.recommendation_summary.setText(
-                "추천: 설치된 CUPS 모델 · " + recommendation.catalog_status
+                "추천: 설치된 CUPS 모델"
             )
         elif recommendation.installed_matches:
             self.recommendation_summary.setText(
-                "확인 필요: 설치된 드라이버의 모델명과 검색명이 일치하지만 미검증입니다."
+                "드라이버 후보 있음 · 모델 확인 필요"
             )
         else:
             self.recommendation_summary.setText(
-                "호환 드라이버 미확인 · " + recommendation.catalog_status
+                "드라이버 확인 필요"
             )
 
         if recommendation.preferred_model:
@@ -577,6 +691,8 @@ class PrinterSetupWidget(QWidget):
         )
 
     def register(self):
+        if self._register_busy:
+            return
         if not self.current_device:
             self._error("프린터를 먼저 선택해 주세요.")
             return
@@ -587,6 +703,11 @@ class PrinterSetupWidget(QWidget):
             self.ppd_path.text().strip() or None,
             self.model_choice.currentData() if self.driver.currentData() == "model" else None,
         )
+        try:
+            validate_registration(registration)
+        except PrinterRegistrationError as exc:
+            self._error(str(exc))
+            return
         driver_name = {
             "everywhere": "IPP Everywhere",
             "ppd": "PPD",
@@ -605,23 +726,26 @@ class PrinterSetupWidget(QWidget):
                 "안내: IPP 2.x / PWG Raster를 보고했지만 "
                 "실제 드라이버리스 인쇄 성공은 검증되지 않았습니다.\n\n"
             )
-        summary = (
-            f"프린터: {registration.name}\n"
-            f"연결: {registration.uri}\n"
-            f"식별 모델: {self.identity_result.name if self.identity_result else '미확인'}\n"
+        details = (
+            f"프린터 이름: {registration.name}\n"
+            f"연결 URI: {registration.uri}\n"
+            f"모델 정보: {self.identity_result.name if self.identity_result else '미확인'}\n"
             f"드라이버: {driver_name}\n"
-            f"CUPS 모델 ID: {registration.driver_model or '해당 없음'}\n\n"
-            + driver_warning
-            + "내 Crostini CUPS에 새 프린터 큐를 등록할까요?\n"
-            "다른 PC와 프린터 자체의 설정은 변경되지 않습니다."
+            f"CUPS 모델 ID: {registration.driver_model or '-'}\n"
+            f"PPD 파일: {registration.ppd_path or '-'}\n\n"
+            f"{driver_warning}"
+            "실행 작업: Crostini CUPS에 새 로컬 프린터 큐 등록\n"
+            f"실행 명령: {shlex.join(registration_command(registration))}\n"
+            "기존 프린터 큐를 덮어쓰거나 기본 프린터를 변경하지 않습니다.\n"
+            "프린터로 실제 문서를 보내지는 않습니다."
         )
-        answer = QMessageBox.question(
-            self, "프린터 등록 확인", summary,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
+        if not confirm_action(
+            self, title="프린터 등록 확인",
+            summary=f"{registration.name} 프린터를 등록할까요?",
+            details=details, confirm_label="등록",
+        ):
             return
+        self._register_busy = True
         self.register_button.setEnabled(False)
         self.status.setText("CUPS 프린터를 등록 중입니다…")
         self._background(
@@ -630,6 +754,7 @@ class PrinterSetupWidget(QWidget):
         )
 
     def _registered(self, result):
+        self._register_busy = False
         self.register_button.setEnabled(True)
         self.status.setText(result)
         QMessageBox.information(self, "등록 완료", result)
