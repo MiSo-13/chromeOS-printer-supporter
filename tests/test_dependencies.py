@@ -52,7 +52,7 @@ def test_install_uses_fixed_apt_arguments(tmp_path):
 
     def runner(command, **kwargs):
         calls.append((command, kwargs))
-        binaries.update(("lp", "lpstat", "cancel"))
+        service.which = lambda command: f"/usr/bin/{command}"
         return CompletedProcess(command, 0, "", "")
 
     service = manager(tmp_path, binaries=binaries)
