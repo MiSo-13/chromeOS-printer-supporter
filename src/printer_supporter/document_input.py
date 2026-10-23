@@ -13,7 +13,7 @@ def supported_document(path: Path) -> bool:
 
 def local_document_from_text(text: str) -> Path | None:
     value = text.strip().strip('"').strip("'")
-    if not value or "\\n" in value or "\\r" in value:
+    if not value or "\n" in value or "\r" in value:
         return None
     if value.startswith("file://"):
         parsed = urlsplit(value)
