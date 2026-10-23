@@ -131,17 +131,17 @@ class CupsService:
         with TemporaryDirectory(prefix="printhub-test-") as temp:
             page = Path(temp) / "PrintHub-test-page.txt"
             page.write_text(
-                "PrintHub - Printer Test Page\\n"
-                "========================================\\n"
-                f"Printer : {printer}\\n"
-                f"Date    : {datetime.now().astimezone().isoformat(timespec='seconds')}\\n"
-                f"Paper   : {media}\\n"
-                "----------------------------------------\\n"
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZ\\n"
-                "abcdefghijklmnopqrstuvwxyz\\n"
-                "0123456789 !@#$%^&*()\\n"
-                "----------------------------------------\\n"
-                "If you can read this page, the CUPS print path is working.\\n",
+                "PrintHub - Printer Test Page\n"
+                "========================================\n"
+                f"Printer : {printer}\n"
+                f"Date    : {datetime.now().astimezone().isoformat(timespec='seconds')}\n"
+                f"Paper   : {media}\n"
+                "----------------------------------------\n"
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZ\n"
+                "abcdefghijklmnopqrstuvwxyz\n"
+                "0123456789 !@#$%^&*()\n"
+                "----------------------------------------\n"
+                "If you can read this page, the CUPS print path is working.\n",
                 encoding="ascii",
             )
             return self._submit(page, printer, 1, media)
