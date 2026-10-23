@@ -32,6 +32,7 @@ class Registration:
     uri: str
     driver: str = "everywhere"
     ppd_path: str | None = None
+    driver_model: str | None = None
 
 
 def parse_discovered_devices(output: str) -> list[DiscoveredPrinter]:
@@ -83,6 +84,10 @@ def validate_registration(registration: Registration) -> None:
         ppd = Path(registration.ppd_path or "").expanduser()
         if not ppd.is_file() or ppd.suffix.lower() != ".ppd":
             raise PrinterRegistrationError("유효한 PPD 파일을 선택해 주세요.")
+    elif registration.driver == "model":
+        from .driver_recommendation import safe_model_id
+        if not registration.driver_model or not safe_model_id(registration.driver_model):
+            raise PrinterRegistrationError("유효한 CUPS 드라이버 모델 ID를 선택해 주세요.")
     else:
         raise PrinterRegistrationError("지원하지 않는 드라이버 방식입니다.")
 
@@ -134,6 +139,16 @@ class DiscoveryService:
             raise PrinterRegistrationError(
                 "동일한 이름의 프린터가 이미 등록되어 있습니다. 기존 설정을 덮어쓰지 않습니다."
             )
+        if registration.driver == "model":
+            from .driver_recommendation import parse_installed_drivers
+            # 드롭다운의 값만 신뢰하지 않고 등록 직전에 실제 CUPS 카탈로그를 재확인.
+            available = {
+                entry.model_id for entry in parse_installed_drivers(self._run(["lpinfo", "-m"]))
+            }
+            if registration.driver_model not in available:
+                raise PrinterRegistrationError(
+                    "선택한 CUPS 드라이버가 현재 설치 목록에 없습니다. 다시 조회해 주세요."
+                )
         command = [
             "sudo", "-n", "lpadmin", "-p", registration.name,
             "-E", "-v", registration.uri,
@@ -141,6 +156,8 @@ class DiscoveryService:
         ]
         if registration.driver == "ppd":
             command.extend(["-P", str(Path(registration.ppd_path).expanduser())])
+        elif registration.driver == "model":
+            command.extend(["-m", registration.driver_model])
         else:
             command.extend(["-m", "everywhere"])
         self._run(command, timeout=60)
