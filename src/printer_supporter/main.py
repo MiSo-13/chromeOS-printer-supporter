@@ -19,6 +19,7 @@ except QtPlatformError as exc:
 print(f"QT_PLATFORM_SELECTED platform={QT_PLATFORM}", file=sys.stderr)
 
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, pyqtSignal
+from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QHBoxLayout, QLabel,
     QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
@@ -28,6 +29,7 @@ from PyQt6.QtWidgets import (
 from .backend import CupsService, PrintError, PrintJob, SUPPORTED_EXTENSIONS
 from .capabilities import feature_options
 from .diagnostics import diagnose_printer
+from .document_input import local_document_from_mime, supported_document
 from .preview import normalize_page_ranges, pdf_page_count, render_pdf_page
 from .settings import SettingsStore
 from .theme import stylesheet_for
@@ -51,6 +53,37 @@ class Task(QRunnable):
             self.signals.finished.emit(self.operation())
         except Exception as exc:
             self.signals.failed.emit(str(exc))
+
+
+class DocumentDropArea(QFrame):
+    """문서 미리보기 영역으로 들어온 파일 드롭을 처리합니다."""
+
+    fileDropped = pyqtSignal(object)
+
+    def __init__(self):
+        super().__init__()
+        self.setAcceptDrops(True)
+        self.setObjectName("documentDropArea")
+
+    def dragEnterEvent(self, event):
+        if local_document_from_mime(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if local_document_from_mime(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        path = local_document_from_mime(event.mimeData())
+        if path:
+            self.fileDropped.emit(path)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
 
 
 class MainWindow(QMainWindow):
@@ -125,7 +158,8 @@ class MainWindow(QMainWindow):
         print_layout = QHBoxLayout(print_page)
         print_layout.setSpacing(20)
         print_layout.setContentsMargins(4, 6, 4, 6)
-        document_panel = QWidget()
+        document_panel = DocumentDropArea()
+        document_panel.fileDropped.connect(self._set_document)
         document_layout = QVBoxLayout(document_panel)
         document_layout.setSpacing(12)
         settings_panel = QFrame()
@@ -144,6 +178,10 @@ class MainWindow(QMainWindow):
         file_row.addWidget(choose)
         document_layout.addLayout(file_row)
         document_layout.addWidget(QLabel("PDF · Office · 이미지 · 텍스트"))
+        drop_hint = QLabel("파일을 이 영역에 끌어놓거나 Ctrl+V로 파일/경로 붙여넣기")
+        drop_hint.setObjectName("dropHint")
+        drop_hint.setWordWrap(True)
+        document_layout.addWidget(drop_hint)
         preview_group = QGroupBox("문서 미리보기")
         preview_layout = QVBoxLayout(preview_group)
         preview_layout.setSpacing(12)
@@ -302,6 +340,10 @@ class MainWindow(QMainWindow):
         credit.setObjectName("appCredit")
         footer.addWidget(credit)
         layout.addLayout(footer)
+
+        paste_shortcut = QShortcut(QKeySequence.StandardKey.Paste, document_panel)
+        paste_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        paste_shortcut.activated.connect(self._paste_document)
 
         self.timer = QTimer(self)
         self.timer.setInterval(5000)
@@ -564,13 +606,41 @@ class MainWindow(QMainWindow):
             lambda _: self.refresh_jobs(),
         )
 
+    def _set_document(self, path: Path):
+        path = Path(path).expanduser()
+        if not supported_document(path):
+            self.show_error("지원하지 않거나 존재하지 않는 문서 파일입니다.")
+            return
+        self.selected_file = path
+        self.file_label.setText(path.name)
+        self.file_label.setToolTip(str(path))
+        self._load_preview()
+        try:
+            self.settings.set_last_document_dir(path.parent)
+        except OSError as exc:
+            self.status.setText(f"문서는 선택했지만 최근 폴더 저장에 실패했습니다: {exc}")
+
+    def _paste_document(self):
+        focused = QApplication.focusWidget()
+        if isinstance(focused, (QLineEdit, QTextEdit, QSpinBox, QComboBox)):
+            return
+        clipboard = QApplication.clipboard()
+        path = local_document_from_mime(clipboard.mimeData())
+        if path is not None:
+            self._set_document(path)
+        else:
+            self.status.setText("클립보드에 지원되는 로컬 파일 또는 파일 경로가 없습니다.")
+
     def choose_file(self):
         extensions = " ".join(f"*{ext}" for ext in sorted(SUPPORTED_EXTENSIONS))
-        name, _ = QFileDialog.getOpenFileName(self, "인쇄할 문서 선택", str(Path.home()), f"지원 문서 ({extensions})")
+        stored_dir = self.settings.data.get("last_document_dir", "")
+        saved = Path(stored_dir).expanduser() if stored_dir else None
+        initial_dir = saved if saved is not None and saved.is_dir() else Path.home()
+        name, _ = QFileDialog.getOpenFileName(
+            self, "인쇄할 문서 선택", str(initial_dir), f"지원 문서 ({extensions})"
+        )
         if name:
-            self.selected_file = Path(name)
-            self.file_label.setText(self.selected_file.name)
-            self._load_preview()
+            self._set_document(Path(name))
 
     def _load_preview(self):
         self.preview_index = 0
