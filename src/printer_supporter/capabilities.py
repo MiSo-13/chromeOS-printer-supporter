@@ -67,5 +67,8 @@ def feature_options(options: dict[str, PrinterOption]) -> dict[str, PrinterOptio
 def validate_job_options(options: dict[str, str]) -> None:
     """명령행 인자에 안전하게 전달할 수 있는 옵션 토큰만 허용합니다."""
     for key, value in options.items():
-        if not VALID_KEY.fullmatch(key) or not (\n            re.fullmatch(r"[1-9][0-9]*(?:-[1-9][0-9]*)?(?:,[1-9][0-9]*(?:-[1-9][0-9]*)?)*", value)\n            if key == "page-ranges" else VALID_TOKEN.fullmatch(value)\n        ):
+        if not VALID_KEY.fullmatch(key) or not (
+            re.fullmatch(r"[1-9][0-9]*(?:-[1-9][0-9]*)?(?:,[1-9][0-9]*(?:-[1-9][0-9]*)?)*", value)
+            if key == "page-ranges" else VALID_TOKEN.fullmatch(value)
+        ):
             raise ValueError(f"유효하지 않은 CUPS 옵션입니다: {key}={value}")
