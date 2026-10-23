@@ -2,10 +2,15 @@
 
 from subprocess import CompletedProcess
 
-from PyQt6.QtWidgets import QApplication
+import pytest
+
+try:
+    from PyQt6.QtWidgets import QApplication
+    from printer_supporter.setup_ui import PrinterSetupWidget
+except ImportError as exc:
+    pytest.skip(f"GUI 시스템 라이브러리 없음: {exc}", allow_module_level=True)
 
 from printer_supporter.discovery import DiscoveryService
-from printer_supporter.setup_ui import PrinterSetupWidget
 
 
 def test_setup_does_not_search_automatically(monkeypatch):
