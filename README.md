@@ -14,7 +14,29 @@ ChromeOS의 Linux(Crostini)에서 실행하는 PyQt6 기반 CUPS 프린터 관�
 
 > ChromeOS 브라우저의 Ctrl+P 통합은 지원 범위가 아닙니다. 앱을 실행해 문서를 선택하는 방식입니다.
 
-## Crostini 설치
+## Crostini 설치 및 의존성 자동 설치
+
+프로젝트를 받은 뒤 터미널에서 설치 도우미를 실행할 수 있습니다.
+
+```bash
+bash install.sh
+.venv/bin/chromeos-printer-supporter
+```
+
+설치 도우미는 **Python 3 및 Debian/Ubuntu(Crostini)** 환경을 전제로 하며,
+누락된 `python3-venv`, `cups`, `cups-client`, PyQt6와 선택적인 LibreOffice 설치를
+각 단계에서 사용자에게 확인합니다. 동의 없이는 설치하지 않습니다.
+삼성 전용 ULD 등 제조사 드라이버는 자동 다운로드하지 않습니다.
+
+앱을 실행하면 CUPS 명령을 확인하고, 누락 시 패키지명과 실제 설치 명령을 보여줍니다.
+메인 화면의 **패키지 점검**에서 선택 의존성도 검사할 수 있습니다.
+Word/Excel/PowerPoint 파일 인쇄 시 LibreOffice가 없다면 그때 설치 여부를 물어봅니다.
+
+앱 내부 설치는 `sudo -n apt-get install -y ...`를 사용하므로 Crostini에 암호 없는
+sudo 권한이 필요합니다. 권한이 없다면 오류를 표시하며 터미널에서 직접 설치할 수 있습니다.
+설치는 **Linux 컨테이너에만** 적용되고 회사 공용 프린터의 하드웨어 설정을 변경하지 않습니다.
+
+### 수동 설치
 
 먼저 프린터가 CUPS에 등록되어 실제 출력되는지 확인합니다.
 

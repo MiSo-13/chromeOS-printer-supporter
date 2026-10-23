@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .backend import CupsService, PrintError, PrintJob, SUPPORTED_EXTENSIONS
+from .dependencies import CUPS, LIBREOFFICE, DependencyManager
 
 
 class Signals(QObject):
@@ -35,9 +36,10 @@ class Task(QRunnable):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, service: CupsService | None = None):
+    def __init__(self, service: CupsService | None = None, dependency_manager: DependencyManager | None = None):
         super().__init__()
         self.service = service or CupsService()
+        self.dependency_manager = dependency_manager or DependencyManager()
         self.pool = QThreadPool.globalInstance()
         self.selected_file: Path | None = None
         self.current_jobs: list[PrintJob] = []
@@ -62,6 +64,9 @@ class MainWindow(QMainWindow):
         refresh = QPushButton("새로고침")
         refresh.clicked.connect(self.refresh_all)
         selection.addWidget(refresh)
+        check_packages = QPushButton("패키지 점검")
+        check_packages.clicked.connect(lambda: self.check_dependencies(required_only=False))
+        selection.addWidget(check_packages)
         layout.addLayout(selection)
 
         tabs = QTabWidget()
@@ -117,12 +122,49 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self.refresh_all)
         self.timer.start()
         self.refresh_all()
+        QTimer.singleShot(100, lambda: self.check_dependencies(required_only=True))
 
     def _background(self, operation, completed):
         task = Task(operation)
         task.signals.finished.connect(completed)
         task.signals.failed.connect(self.show_error)
         self.pool.start(task)
+
+    def check_dependencies(self, *, required_only: bool = False):
+        missing = self.dependency_manager.missing(required_only=required_only)
+        if not missing:
+            if not required_only:
+                QMessageBox.information(self, "의존성 점검", "필요한 패키지가 모두 설치되어 있습니다.")
+            return
+        self._offer_install(missing)
+
+    def _offer_install(self, missing):
+        names = ", ".join(dep.name for dep in missing)
+        command = " ".join(self.dependency_manager.installation_command(missing))
+        description = "\n".join(f"• {dep.name}: {dep.description}" for dep in missing)
+        answer = QMessageBox.question(
+            self,
+            "필요한 패키지 설치",
+            f"설치되지 않은 패키지:\n{description}\n\n"
+            f"실행 명령:\n{command}\n\n"
+            "Linux 컨테이너에만 설치됩니다. sudo 권한과 네트워크가 필요합니다.\n"
+            "설치를 진행할까요?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self.status.setText(f"설치 보류: {names}")
+            return
+        self.status.setText(f"설치 중: {names} (잠시 기다려 주세요)")
+        self._background(
+            lambda: self.dependency_manager.install(missing, approved=True),
+            self._installation_finished,
+        )
+
+    def _installation_finished(self, message: str):
+        QMessageBox.information(self, "패키지 설치 완료", message)
+        self.status.setText(message)
+        self.refresh_all()
 
     def show_error(self, message: str):
         self.status.setText(f"오류: {message}")
@@ -171,6 +213,15 @@ class MainWindow(QMainWindow):
     def print_selected(self):
         if not self.selected_file or not self.printer_box.currentText():
             self.show_error("프린터와 파일을 선택해 주세요.")
+            return
+        if self.selected_file.suffix.lower() in {
+            ".doc", ".docx", ".odt", ".rtf", ".xls", ".xlsx", ".ods",
+            ".ppt", ".pptx", ".odp",
+        } and not self.dependency_manager.installed(LIBREOFFICE):
+            self._offer_install([LIBREOFFICE])
+            return
+        if not self.dependency_manager.installed(CUPS):
+            self._offer_install([CUPS])
             return
         self.print_button.setEnabled(False)
         source, printer = self.selected_file, self.printer_box.currentText()
