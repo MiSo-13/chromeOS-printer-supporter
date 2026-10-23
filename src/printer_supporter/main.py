@@ -63,7 +63,7 @@ class MainWindow(QMainWindow):
         self.option_generation = 0
         self.option_printer = ""
         self.option_keys: dict[str, str] = {}
-        self.setWindowTitle("PrintHub · ChromeOS 프린터 관리자")
+        self.setWindowTitle("PrintHub")
         self.resize(1000, 760)
         from .theme import APP_STYLESHEET
         self.setStyleSheet(APP_STYLESHEET)
@@ -345,7 +345,7 @@ class MainWindow(QMainWindow):
         if not printer:
             self.option_info.setText("프린터를 선택해 주세요.")
             return
-        self.option_info.setText(f"{printer} 지원 옵션 조회 중…")
+        self.option_info.setText("인쇄 설정을 불러오는 중…")
         task = Task(lambda: (printer, generation, self.service.printer_options(printer)))
         task.signals.finished.connect(self._populate_options)
         task.signals.failed.connect(
@@ -376,7 +376,7 @@ class MainWindow(QMainWindow):
             control.setCurrentIndex(default_index)
             control.setEnabled(len(option.choices) > 1)
         self.option_info.setText(
-            f"{printer}: 지원 옵션 {len(supported)}종 감지 · 미지원 항목은 기본값을 사용합니다."
+            "인쇄 설정을 불러왔습니다."
         )
 
     def _selected_print_options(self) -> dict[str, str]:
@@ -431,7 +431,7 @@ class MainWindow(QMainWindow):
         for job in jobs:
             owned = "내 작업" if job.owner == getpass.getuser() else "다른 사용자"
             item = QListWidgetItem(
-                f"대기/처리 중  |  {job.job_id}  |  {owned} ({job.owner})  |  "
+                f"{job.job_id}  ·  {owned} ({job.owner})  ·  "
                 f"{job.size} bytes  |  {job.submitted}"
             )
             item.setData(Qt.ItemDataRole.UserRole, job.job_id)
@@ -449,7 +449,7 @@ class MainWindow(QMainWindow):
         self.history_list.clear()
         for job in jobs[:100]:
             self.history_list.addItem(
-                f"CUPS 처리 종료  |  {job.job_id}  |  {job.owner}  |  "
+                f"{job.job_id}  ·  {job.owner}  ·  "
                 f"{job.size} bytes  |  {job.submitted}"
             )
 
