@@ -110,7 +110,8 @@ def create_deb(bundle: Path, output_dir: Path, architecture: str) -> Path:
             check=True,
         )
 
-    digest = hashlib.file_digest(output.open("rb"), "sha256").hexdigest()
+    with output.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
     checksum_path = output.with_suffix(output.suffix + ".sha256")
     checksum_path.write_text(f"{digest}  {output.name}\n", encoding="utf-8")
     return output
