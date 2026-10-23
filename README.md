@@ -13,6 +13,8 @@ ChromeOS의 Linux(Crostini)에서 실행하는 PyQt6 기반 CUPS 프린터 관�
 - 선택한 CUPS 프린터로 테스트 페이지 1장 출력 (확인 후 전송, 원본 문서 불필요)
 - 현재 CUPS 큐의 진행 중인 작업 및 처리 종료 이력 조회(최대 100건 표시)\n- **내 작업**에 한해 보류·재개·취소 (다른 사용자 작업 및 프린터 전체 대기열은 변경하지 않음)
 - 네트워크 프린터 검색(CUPS/mDNS), IP 직접 입력, 연결 확인 및 사용자 승인 후 CUPS 큐 등록
+- 프린터 선택 시 제조사·모델 자동 식별: 직접 IPP/IPPS 연결은 Get-Printer-Attributes 조회, Socket/mDNS 서비스명은 미검증 정보로 구분
+- IPP Everywhere 기능 보고/드라이버리스 후보/확인 불가 구분 및 등록 시 주의 안내 (드라이버 자동 설치나 출력은 하지 않음)
 - 원본 문서를 수정하지 않고 작업별 인쇄 옵션 지정
 - 문서 미리보기: PDF 페이지 이동 및 창 크기 맞춤/75~200% 확대·축소, 이미지(PNG/JPEG/GIF/TIFF) 및 TXT 내용 확인
 - Office(DOCX/XLSX/PPTX 등) 문서도 LibreOffice로 임시 PDF 변환하여 같은 미리보기 화면에서 페이지 확인
@@ -117,6 +119,23 @@ python3 -m venv .venv
 > 설치된 Samsung M203x PPD 파일을 선택해야 합니다.
 > `IPP Everywhere`는 지원하는 모델에서만 사용하세요.
 > 실제 기기에서 네트워크 검색·인쇄를 검증하는 과정은 남아 있습니다.
+
+### 프린터 모델 자동 식별
+
+**프린터 추가** 화면에서 네트워크 검색 결과를 선택하거나 IP 주소를 적용하면 모델 정보를 자동으로 확인합니다. **모델 정보 다시 확인** 버튼으로 재조회할 수도 있습니다.
+
+- `ipp://`, `ipps://`: `ipptool`의 **Get-Printer-Attributes** 읽기 전용 요청으로 `printer-make-and-model`, `ipp-versions-supported`, `document-format-supported`, `ipp-features-supported` 속성을 조회합니다. 프린터에서 실제로 보고한 모델명인지 정보 출처가 표시됩니다.
+- `dnssd://`, `socket://`: 이 단계에서는 서비스에 표시된 이름만 **미검증 추정**으로 사용합니다. mDNS 이름을 모델의 확정 근거로 사용하거나 Socket 주소를 IPP로 자동 변경하지 않습니다. IPP 직접 연결 URI를 알면 IP 주소 입력으로 재확인하세요.
+- `ipp-features-supported`에 `ipp-everywhere`가 있으면 **프린터가 기능을 보고함**, IPP 2.x와 PWG Raster를 보고하면 **드라이버리스 후보**로 표시합니다. 이 어느 경우에도 실제 인쇄 성공이나 IPP Everywhere 인증을 보장하지 않습니다.
+- 확인할 수 없는 경우에는 **지원 미확인**으로 표시하며, PPD 파일 등 제조사 드라이버를 별도로 확인하도록 안내합니다.
+
+정보 조회에 필요한 `ipptool`이 없다면 **환경 점검**에서 선택적으로 `cups-ipp-utils` 설치를 승인하거나 Crostini 터미널에서 아래 명령을 실행할 수 있습니다.
+
+```bash
+sudo apt install cups-ipp-utils
+```
+
+자동 식별은 **프린터 속성 조회만 수행**합니다. 설치, CUPS 큐 등록, 인쇄를 자동으로 시작하지 않습니다. 기존과 같이 프린터 등록은 명시적인 사용자 승인 후 진행됩니다.
 
 ## 문서 미리보기
 
