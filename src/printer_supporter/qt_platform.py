@@ -24,7 +24,7 @@ LIBRARY_PACKAGES = {
     "libX11-xcb.so.1": "libx11-xcb1",
     "libEGL.so.1": "libegl1",
 }
-MISSING_LIBRARY = re.compile(r"^\\s*(\\S+)\\s+=>\\s+not found\\s*$")
+MISSING_LIBRARY = re.compile(r"^\s*(\S+)\s+=>\s+not found\s*$")
 
 
 class QtPlatformError(RuntimeError):
@@ -100,7 +100,7 @@ def configure_qt_platform(
         raise QtPlatformError(
             "Crostini X11(xcb) 라이브러리가 누락되었습니다: "
             + ", ".join(absent)
-            + "\\n설치 방법: " + install
+            + "\n설치 방법: " + install
         )
 
     target["QT_QPA_PLATFORM"] = "xcb"
