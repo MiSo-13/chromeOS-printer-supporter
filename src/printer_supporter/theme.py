@@ -1,6 +1,9 @@
 """ChromeOS Printer Supporter 데스크톱 UI 공통 스타일."""
 
 APP_STYLESHEET = """
+QLabel#diagnosisSummary { font-size: 15px; font-weight: 600; padding: 12px; background: #e8f0f9; border-radius: 7px; }
+QLabel#diagnosisSummary[severity="warning"] { color: #854b13; background: #fff0d9; }
+
 QLabel#appTitle { font-size: 15px; font-weight: 600; color: #35465a; padding: 2px 0; }
 QLabel#appCredit { color: #718092; font-size: 11px; padding: 2px 4px; }
 QGroupBox { padding-top: 18px; }
@@ -39,6 +42,9 @@ QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
 """
 
 DARK_STYLESHEET = """
+QLabel#diagnosisSummary { font-size: 15px; font-weight: 600; padding: 12px; color: #dbeafe; background: #263d57; border-radius: 7px; }
+QLabel#diagnosisSummary[severity="warning"] { color: #ffe2ae; background: #503d25; }
+
 QLabel#appTitle { font-size: 15px; font-weight: 600; color: #dce5ef; padding: 2px 0; }
 QLabel#appCredit { color: #a6b3c2; font-size: 11px; padding: 2px 4px; }
 QGroupBox { padding-top: 18px; }
