@@ -25,4 +25,4 @@ jobs:
       - name: 문법 확인
         run: python -m compileall -q src tests
       - name: 단위 테스트
-        run: pytest -q
+        run: pytest -vv -x -s
