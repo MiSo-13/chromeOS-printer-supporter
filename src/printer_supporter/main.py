@@ -19,6 +19,7 @@ except QtPlatformError as exc:
 print(f"QT_PLATFORM_SELECTED platform={QT_PLATFORM}", file=sys.stderr)
 
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, QEvent, pyqtSignal
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QHBoxLayout, QLabel,
     QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
@@ -29,7 +30,8 @@ from .backend import CupsService, PrintError, PrintJob, SUPPORTED_EXTENSIONS
 from .capabilities import feature_options
 from .diagnostics import diagnose_printer
 from .document_input import local_document_from_mime, supported_document
-from .preview import normalize_page_ranges, pdf_page_count, render_pdf_page
+from .preview import normalize_page_ranges, pdf_page_count, render_pdf_page, read_text_preview
+from .preview_widget import DocumentPreview, read_image
 from .settings import SettingsStore
 from .theme import stylesheet_for
 from .setup_ui import PrinterSetupWidget
@@ -186,29 +188,36 @@ class MainWindow(QMainWindow):
         preview_group = QGroupBox("문서 미리보기")
         preview_layout = QVBoxLayout(preview_group)
         preview_layout.setSpacing(12)
-        self.preview_label = QLabel("PDF 파일을 선택하면 미리보기가 표시됩니다.")
-        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_label.setMinimumHeight(370)
-        self.preview_label.setObjectName("previewCanvas")
-        preview_layout.addWidget(self.preview_label)
+        self.preview_view = DocumentPreview()
+        self.preview_view.setMinimumHeight(280)
+        preview_layout.addWidget(self.preview_view, 1)
+
         navigation = QHBoxLayout()
-        navigation.setSpacing(12)
+        navigation.setSpacing(8)
         self.prev_page = QPushButton("이전")
         self.prev_page.clicked.connect(lambda: self._show_preview_page(self.preview_index - 1))
         self.next_page = QPushButton("다음")
         self.next_page.clicked.connect(lambda: self._show_preview_page(self.preview_index + 1))
         self.page_indicator = QLabel("—")
-        navigation.addStretch()
+        self.page_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.page_indicator.setMinimumWidth(52)
         navigation.addWidget(self.prev_page)
         navigation.addWidget(self.page_indicator)
         navigation.addWidget(self.next_page)
         navigation.addStretch()
+        self.zoom_box = QComboBox()
+        self.zoom_box.setAccessibleName("미리보기 확대/축소")
+        self.zoom_box.addItem("화면 맞춤", "fit")
+        for label, value in (("75%", 0.75), ("100%", 1.0), ("125%", 1.25),
+                             ("150%", 1.5), ("200%", 2.0)):
+            self.zoom_box.addItem(label, value)
+        self.zoom_box.currentIndexChanged.connect(self._change_preview_zoom)
+        navigation.addWidget(self.zoom_box)
         preview_layout.addLayout(navigation)
         document_layout.addWidget(preview_group, 1)
         self.preview_index = 0
         self.preview_count = 0
-        self.prev_page.setEnabled(False)
-        self.next_page.setEnabled(False)
+        self._set_preview_navigation(False)
         range_row = QHBoxLayout()
         range_row.setSpacing(12)
         range_row.addWidget(QLabel("페이지"))
@@ -678,35 +687,68 @@ class MainWindow(QMainWindow):
         if name:
             self._set_document(Path(name))
 
+    def _set_preview_navigation(self, has_pdf: bool, *, can_zoom: bool = False):
+        self.prev_page.setEnabled(has_pdf and self.preview_index > 0)
+        self.next_page.setEnabled(has_pdf and self.preview_index + 1 < self.preview_count)
+        self.page_indicator.setText(
+            f"{self.preview_index + 1} / {self.preview_count}" if has_pdf else "—"
+        )
+        self.zoom_box.setEnabled(can_zoom)
+
+    def _change_preview_zoom(self, _index: int):
+        self.preview_view.set_zoom(self.zoom_box.currentData())
+
     def _load_preview(self):
         self.preview_index = 0
         self.preview_count = 0
-        if self.selected_file and self.selected_file.suffix.lower() == ".pdf":
+        self.preview_view.clear("미리보기를 불러오는 중…")
+        self._set_preview_navigation(False)
+        if self.selected_file is None:
+            self.preview_view.clear("문서를 선택하면 미리보기가 표시됩니다.")
+            return
+
+        suffix = self.selected_file.suffix.lower()
+        if suffix == ".pdf":
             try:
                 self.preview_count = pdf_page_count(self.selected_file)
+                if self.preview_count == 0:
+                    raise ValueError("페이지가 없는 PDF입니다.")
                 self._show_preview_page(0)
             except Exception as exc:
-                self.preview_label.setText(f"미리보기를 열 수 없습니다: {exc}")
+                self.preview_count = 0
+                self.preview_view.clear(f"PDF 미리보기를 열 수 없습니다: {exc}")
+                self._set_preview_navigation(False)
+        elif suffix in {".png", ".jpg", ".jpeg", ".gif", ".tif", ".tiff"}:
+            try:
+                self.preview_view.show_image(read_image(self.selected_file))
+                self._set_preview_navigation(False, can_zoom=True)
+            except Exception as exc:
+                self.preview_view.clear(f"이미지 미리보기를 열 수 없습니다: {exc}")
+        elif suffix == ".txt":
+            try:
+                self.preview_view.show_text(read_text_preview(self.selected_file))
+            except Exception as exc:
+                self.preview_view.clear(f"텍스트 미리보기를 열 수 없습니다: {exc}")
         else:
-            self.preview_label.setText("미리보기는 PDF 파일에서 사용할 수 있습니다.")
-            self.page_indicator.setText("—")
-            self.prev_page.setEnabled(False)
-            self.next_page.setEnabled(False)
+            self.preview_view.clear(
+                "Office 문서 미리보기는 아직 지원하지 않습니다. "
+                "인쇄 전에 PDF로 변환해 내용을 확인해 주세요."
+            )
 
     def _show_preview_page(self, index: int):
-        if not self.selected_file or not 0 <= index < self.preview_count:
+        if (self.selected_file is None or self.selected_file.suffix.lower() != ".pdf"
+                or not 0 <= index < self.preview_count):
             return
-        from PyQt6.QtGui import QPixmap
         try:
             image = QPixmap()
-            image.loadFromData(render_pdf_page(self.selected_file, index))
-            self.preview_label.setPixmap(image.scaled(max(400, self.preview_label.width() - 20), 460, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            if not image.loadFromData(render_pdf_page(self.selected_file, index, scale=1.6)):
+                raise ValueError("PDF 페이지 이미지를 표시할 수 없습니다.")
+            self.preview_view.show_image(image)
             self.preview_index = index
-            self.page_indicator.setText(f"{index + 1} / {self.preview_count}")
-            self.prev_page.setEnabled(index > 0)
-            self.next_page.setEnabled(index + 1 < self.preview_count)
+            self._set_preview_navigation(True, can_zoom=True)
         except Exception as exc:
-            self.preview_label.setText(f"미리보기 오류: {exc}")
+            self.preview_view.clear(f"PDF 미리보기 오류: {exc}")
+            self._set_preview_navigation(False)
 
     def print_test_page(self):
         printer = self.printer_box.currentText()
