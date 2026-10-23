@@ -13,7 +13,7 @@ VALID_THEMES = {"light", "dark"}
 def settings_path() -> Path:
     """앱 데이터 디렉터리. 환경변수로 경로를 변경할 수 있습니다."""
     base = os.environ.get("PRINTHUB_CONFIG_DIR")
-    return (Path(base).expanduser() if base else Path.home() / ".config" / "printhub") / "settings.json"
+    return (Path(base).expanduser() if base else Path.cwd() / "data" / "config") / "settings.json"
 
 
 class SettingsStore:
