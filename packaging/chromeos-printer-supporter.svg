@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>ChromeOS Printer Supporter</title>
+  <rect width="128" height="128" rx="26" fill="#246eaf"/>
+  <rect x="30" y="15" width="68" height="39" rx="6" fill="#d8eafb"/>
+  <rect x="21" y="44" width="86" height="57" rx="11" fill="#ffffff"/>
+  <rect x="32" y="79" width="64" height="33" rx="5" fill="#d8eafb"/>
+  <path d="M41 91h46M41 101h35" stroke="#246eaf" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="91" cy="61" r="5" fill="#2dbf80"/>
+  <path d="M30 78h68" stroke="#246eaf" stroke-width="4" stroke-linecap="round"/>
+</svg>
