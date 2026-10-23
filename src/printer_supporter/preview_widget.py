@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QPixmap, QImageReader
+from PyQt6.QtGui import QPixmap, QImageReader, QTextCursor
 from PyQt6.QtWidgets import (
     QFrame, QLabel, QPlainTextEdit, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
@@ -72,7 +72,7 @@ class DocumentPreview(QWidget):
     def show_text(self, content: str):
         self._original = QPixmap()
         self.text_view.setPlainText(content)
-        self.text_view.moveCursor(self.text_view.textCursor().MoveOperation.Start)
+        self.text_view.moveCursor(QTextCursor.MoveOperation.Start)
         self.stack.setCurrentWidget(self.text_view)
 
     def set_zoom(self, value: str | float):
