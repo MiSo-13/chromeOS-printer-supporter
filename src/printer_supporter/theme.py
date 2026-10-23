@@ -14,16 +14,6 @@ QTabBar#queueTabBar::tab:selected { background: #d9e9ff; color: #124f91; border-
 QTabBar#queueTabBar::tab:hover:!selected { background: #f0f5fb; color: #174c85; border-color: #7da9d9; }
 QTabBar#queueTabBar::tab:focus { border-color: #1673d1; }
 
-QLabel#setupTitle { font-size: 18px; font-weight: 700; color: #253b54; }
-QLabel#setupSteps { background: #eaf1f9; color: #2d5982; border: 1px solid #c7d7e7; border-radius: 7px; padding: 10px; font-weight: 600; }
-QGroupBox#setupStep { background: #ffffff; border: 1px solid #cdd9e7; border-radius: 9px; margin-top: 17px; padding: 13px 12px 12px; }
-QGroupBox#setupStep::title { color: #225e9e; font-weight: 700; padding: 0 6px; }
-QPushButton#setupHelpButton { background: #edf5ff; color: #205c99; border: 1px solid #b3cce4; }
-QLabel#setupStatus { background: #edf3fa; color: #2b4f71; border-radius: 6px; padding: 8px; }
-QLabel#dialogSummary { font-size: 14px; font-weight: 700; color: #213d5e; }
-QPlainTextEdit#copyableDetails { background: #f8fafc; color: #24354b; border: 1px solid #c7d4e3; border-radius: 7px; padding: 10px; }
-QPushButton#approveActionButton { background: #225e9e; color: #ffffff; font-weight: 700; }
-
 QLabel#dropHint { color: #556477; font-size: 12px; padding: 6px 2px; }
 
 QLabel#diagnosisSummary { font-size: 15px; font-weight: 600; padding: 12px; background: #e8f0f9; border-radius: 7px; }
@@ -64,7 +54,18 @@ QTabBar::tab { background: #e9edf2; padding: 10px 15px; }
 QTabBar::tab:selected { background: #fff; font-weight: 600; }
 QGroupBox { background: #fff; border: 1px solid #dce2e8; border-radius: 8px; margin-top: 12px; padding: 12px; font-weight: 600; }
 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
+QLabel#setupTitle { font-size: 18px; font-weight: 700; color: #253b54; }
+QLabel#setupSteps { background: #eaf1f9; color: #2d5982; border: 1px solid #c7d7e7; border-radius: 7px; padding: 10px; font-weight: 600; }
+QGroupBox#setupStep { background: #ffffff; border: 1px solid #cdd9e7; border-radius: 9px; margin-top: 17px; padding: 13px 12px 12px; }
+QGroupBox#setupStep::title { color: #225e9e; font-weight: 700; padding: 0 6px; }
+QPushButton#setupHelpButton { background: #edf5ff; color: #205c99; border: 1px solid #b3cce4; }
+QLabel#setupStatus { background: #edf3fa; color: #2b4f71; border-radius: 6px; padding: 8px; }
+QLabel#dialogSummary { font-size: 14px; font-weight: 700; color: #213d5e; }
+QPlainTextEdit#copyableDetails { background: #f8fafc; color: #24354b; border: 1px solid #c7d4e3; border-radius: 7px; padding: 10px; }
+QPushButton#approveActionButton { background: #225e9e; color: #ffffff; font-weight: 700; }
+
 """
+
 
 DARK_STYLESHEET = """
 QWidget#documentPreview, QScrollArea#previewScroll { background: #303843; border: none; border-radius: 6px; }
@@ -79,16 +80,6 @@ QTabBar#queueTabBar::tab { background: #313b48; color: #d1ddeb; border: 1px soli
 QTabBar#queueTabBar::tab:selected { background: #244e79; color: #ffffff; border-color: #6ea0d3; border-bottom: 3px solid #8cc9ff; font-weight: 700; }
 QTabBar#queueTabBar::tab:hover:!selected { background: #405367; color: #ffffff; border-color: #86b5e3; }
 QTabBar#queueTabBar::tab:focus { border-color: #9cd4ff; }
-
-QLabel#setupTitle { font-size: 18px; font-weight: 700; color: #e8f2fc; }
-QLabel#setupSteps { background: #243b53; color: #d4eaff; border: 1px solid #466581; border-radius: 7px; padding: 10px; font-weight: 600; }
-QGroupBox#setupStep { background: #242b34; border: 1px solid #4c5d70; border-radius: 9px; margin-top: 17px; padding: 13px 12px 12px; }
-QGroupBox#setupStep::title { color: #b2d8ff; font-weight: 700; padding: 0 6px; }
-QPushButton#setupHelpButton { background: #2d4965; color: #e1f1ff; border: 1px solid #6588aa; }
-QLabel#setupStatus { background: #283d54; color: #cce6ff; border-radius: 6px; padding: 8px; }
-QLabel#dialogSummary { font-size: 14px; font-weight: 700; color: #e5f1fc; }
-QPlainTextEdit#copyableDetails { background: #202b38; color: #e9f3ff; border: 1px solid #61758c; border-radius: 7px; padding: 10px; }
-QPushButton#approveActionButton { background: #357bbd; color: #ffffff; font-weight: 700; }
 
 QLabel#dropHint { color: #b8c4d1; font-size: 12px; padding: 6px 2px; }
 
@@ -130,6 +121,16 @@ QTabBar::tab { background: #242b34; padding: 10px 15px; }
 QTabBar::tab:selected { background: #242b34; font-weight: 600; }
 QGroupBox { background: #242b34; border: 1px solid #3b4551; border-radius: 8px; margin-top: 12px; padding: 12px; font-weight: 600; }
 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
+QLabel#setupTitle { font-size: 18px; font-weight: 700; color: #e8f2fc; }
+QLabel#setupSteps { background: #243b53; color: #d4eaff; border: 1px solid #466581; border-radius: 7px; padding: 10px; font-weight: 600; }
+QGroupBox#setupStep { background: #242b34; border: 1px solid #4c5d70; border-radius: 9px; margin-top: 17px; padding: 13px 12px 12px; }
+QGroupBox#setupStep::title { color: #b2d8ff; font-weight: 700; padding: 0 6px; }
+QPushButton#setupHelpButton { background: #2d4965; color: #e1f1ff; border: 1px solid #6588aa; }
+QLabel#setupStatus { background: #283d54; color: #cce6ff; border-radius: 6px; padding: 8px; }
+QLabel#dialogSummary { font-size: 14px; font-weight: 700; color: #e5f1fc; }
+QPlainTextEdit#copyableDetails { background: #202b38; color: #e9f3ff; border: 1px solid #61758c; border-radius: 7px; padding: 10px; }
+QPushButton#approveActionButton { background: #357bbd; color: #ffffff; font-weight: 700; }
+
 """
 
 def stylesheet_for(theme: str) -> str:
