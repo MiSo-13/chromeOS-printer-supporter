@@ -18,8 +18,7 @@ except QtPlatformError as exc:
     raise SystemExit(2) from exc
 print(f"QT_PLATFORM_SELECTED platform={QT_PLATFORM}", file=sys.stderr)
 
-from PyQt6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, QEvent, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QHBoxLayout, QLabel,
     QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
@@ -80,8 +79,8 @@ class DocumentDropArea(QFrame):
     def dropEvent(self, event):
         path = local_document_from_mime(event.mimeData())
         if path:
-            self.fileDropped.emit(path)
             event.acceptProposedAction()
+            QTimer.singleShot(0, lambda selected=path: self.fileDropped.emit(selected))
         else:
             event.ignore()
 
@@ -99,6 +98,8 @@ class MainWindow(QMainWindow):
         self.option_generation = 0
         self.option_printer = ""
         self.option_keys: dict[str, str] = {}
+        QApplication.instance().installEventFilter(self)
+        self.setAcceptDrops(True)
         self.setWindowTitle("ChromeOS Printer Supporter")
         self.resize(1120, 800)
         self.setMinimumSize(960, 680)
@@ -341,16 +342,50 @@ class MainWindow(QMainWindow):
         footer.addWidget(credit)
         layout.addLayout(footer)
 
-        paste_shortcut = QShortcut(QKeySequence.StandardKey.Paste, document_panel)
-        paste_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-        paste_shortcut.activated.connect(self._paste_document)
-
         self.timer = QTimer(self)
         self.timer.setInterval(5000)
         self.timer.timeout.connect(self.refresh_all)
         self.timer.start()
         self.refresh_all()
         QTimer.singleShot(100, lambda: self.check_dependencies(required_only=True))
+
+    def eventFilter(self, watched, event):
+        """PDF Helper와 동일하게 앱 전체에서 파일 Ctrl+V를 감지합니다."""
+        if (event.type() == QEvent.Type.KeyPress and self.isActiveWindow()
+                and event.key() == Qt.Key.Key_V
+                and event.modifiers() == Qt.KeyboardModifier.ControlModifier
+                and isinstance(watched, QWidget)
+                and (watched is self or self.isAncestorOf(watched))
+                and not isinstance(QApplication.focusWidget(), (QLineEdit, QTextEdit, QSpinBox, QComboBox))):
+            mime = QApplication.clipboard().mimeData()
+            if local_document_from_mime(mime) is not None:
+                self._paste_document()
+                return True
+        return super().eventFilter(watched, event)
+
+    def closeEvent(self, event):
+        QApplication.instance().removeEventFilter(self)
+        super().closeEvent(event)
+
+    def dragEnterEvent(self, event):
+        if local_document_from_mime(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if local_document_from_mime(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event):
+        path = local_document_from_mime(event.mimeData())
+        if path:
+            event.acceptProposedAction()
+            QTimer.singleShot(0, lambda selected=path: self._set_document(selected))
+        else:
+            super().dropEvent(event)
 
     def _change_theme(self, index: int):
         theme = self.theme_box.itemData(index)
