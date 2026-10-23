@@ -174,3 +174,63 @@ def test_test_page_propagates_cups_error():
 
     with pytest.raises(PrintError, match="offline"):
         CupsService(runner).print_test_page("Samsung_SL_M2030W")
+
+
+def test_service_fetches_supported_printer_options():
+    commands = []
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        return result(command, stdout="ColorModel/Mode: *Gray RGB\\n")
+
+    options = CupsService(runner).printer_options("Samsung_SL_M2030W")
+    assert commands == [["lpoptions", "-p", "Samsung_SL_M2030W", "-l"]]
+    assert options["ColorModel"].choices[0].value == "Gray"
+
+
+def test_print_options_reach_only_selected_job(tmp_path):
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"%PDF-1.4")
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return result(command)
+
+    service = CupsService(runner)
+    service.print_file(
+        source, "printer", copies=2, media="A4",
+        options={"PageSize": "A4", "ColorModel": "Gray", "Duplex": "None"},
+    )
+    assert calls == [[
+        "lp", "-d", "printer", "-n", "2",
+        "-o", "PageSize=A4", "-o", "ColorModel=Gray",
+        "-o", "Duplex=None", "--", str(source),
+    ]]
+
+
+def test_unknown_paper_keeps_printer_default(tmp_path):
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"%PDF-1.4")
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return result(command)
+
+    CupsService(runner).print_file(source, "printer", media=None)
+    assert calls[0] == ["lp", "-d", "printer", "-n", "1", "--", str(source)]
+
+
+def test_invalid_option_never_submits_job(tmp_path):
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"%PDF-1.4")
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return result(command)
+
+    with pytest.raises(PrintError, match="CUPS 옵션"):
+        CupsService(runner).print_file(source, "printer", options={"ColorModel": ";bad"})
+    assert calls == []
