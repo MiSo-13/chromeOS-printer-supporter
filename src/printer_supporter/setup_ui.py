@@ -15,6 +15,7 @@ from .discovery import (
     Registration, manual_printer,
 )
 from .identification import PrinterIdentity, identify_printer, unknown_identity
+from .driver_recommendation import DriverAdvisor, DriverRecommendation
 
 
 class WorkerSignals(QObject):
@@ -36,15 +37,19 @@ class Worker(QRunnable):
 
 
 class PrinterSetupWidget(QWidget):
-    def __init__(self, *, service: DiscoveryService | None = None, on_registered=None, identifier=None):
+    def __init__(self, *, service: DiscoveryService | None = None, on_registered=None,
+                 identifier=None, advisor: DriverAdvisor | None = None):
         super().__init__()
         self.service = service or DiscoveryService()
         self.on_registered = on_registered
         self.identifier = identifier or identify_printer
+        self.advisor = advisor or DriverAdvisor()
         self.pool = QThreadPool.globalInstance()
         self.current_device: DiscoveredPrinter | None = None
         self.identity_result: PrinterIdentity | None = None
+        self.driver_recommendation: DriverRecommendation | None = None
         self.identity_generation = 0
+        self._driver_user_edited = False
         self._queue_name_user_edited = False
 
         outer_layout = QVBoxLayout(self)
@@ -114,9 +119,24 @@ class PrinterSetupWidget(QWidget):
         self.queue_name.textEdited.connect(self._queue_name_edited)
         self.driver = QComboBox()
         self.driver.addItem("IPP Everywhere (지원 확인 필요)", "everywhere")
+        self.driver.addItem("설치된 CUPS 드라이버 모델", "model")
         self.driver.addItem("설치된 제조사 PPD 파일", "ppd")
         self.driver.currentIndexChanged.connect(self._driver_changed)
+        self.driver.activated.connect(self._mark_driver_user_edited)
         form.addRow("드라이버", self.driver)
+        self.model_choice = QComboBox()
+        self.model_choice.setAccessibleName("설치된 CUPS 모델")
+        self.model_choice.addItem("일치하는 모델을 먼저 확인하세요", None)
+        self.model_choice.setEnabled(False)
+        form.addRow("CUPS 모델", self.model_choice)
+        self.recommendation_summary = QLabel("드라이버 추천: 프린터를 선택해 주세요.")
+        self.recommendation_summary.setWordWrap(True)
+        form.addRow("자동 추천", self.recommendation_summary)
+        self.recommendation_detail = QLabel(
+            "드라이버 설치 없이 로컬 CUPS 목록을 검사합니다."
+        )
+        self.recommendation_detail.setWordWrap(True)
+        form.addRow("", self.recommendation_detail)
         self.ppd_path = QLineEdit()
         self.ppd_path.setPlaceholderText("삼성 ULD 등 설치된 PPD 파일 경로")
         ppd_row = QHBoxLayout()
@@ -194,6 +214,12 @@ class PrinterSetupWidget(QWidget):
 
     def _select_device(self, device: DiscoveredPrinter):
         self.current_device = device
+        self._driver_user_edited = False
+        self.driver_recommendation = None
+        self.model_choice.clear()
+        self.model_choice.addItem("드라이버 모델 확인 중", None)
+        self.recommendation_summary.setText("드라이버 추천: 모델 분석 대기 중…")
+        self.recommendation_detail.setText("설치된 CUPS 드라이버 목록을 조회합니다.")
         self.uri.setText(device.uri)
         if not self._queue_name_user_edited:
             slug = re.sub(r"[^A-Za-z0-9_.-]", "_", device.name)
@@ -211,6 +237,12 @@ class PrinterSetupWidget(QWidget):
         self.identity_generation += 1
         generation = self.identity_generation
         self.identity_result = None
+        self.driver_recommendation = None
+        self.model_choice.clear()
+        self.model_choice.addItem("드라이버 모델 확인 중", None)
+        self._driver_changed()
+        self.recommendation_summary.setText("드라이버 목록을 확인할 준비 중…")
+        self.recommendation_detail.setText("IPP 속성 조회 후 로컬 CUPS 목록을 비교합니다.")
         self.identify_button.setEnabled(False)
         self.identity_summary.setText("모델 정보를 확인하는 중…")
         self.identity_evidence.setText(f"연결 방식: {device.scheme.upper()} / 조회 중")
@@ -246,6 +278,69 @@ class PrinterSetupWidget(QWidget):
         self.identity_advice.setToolTip(
             "지원 형식: " + (", ".join(identity.document_formats) or "미확인")
         )
+        self.recommendation_summary.setText("설치된 드라이버와 비교 중…")
+        worker = Worker(lambda: (
+            generation, device, self.advisor.advise(device, identity)
+        ))
+        worker.signals.finished.connect(self._recommendation_ready)
+        worker.signals.failed.connect(
+            lambda message, expected=generation, selected=device:
+                self._recommendation_failed(expected, selected, message)
+        )
+        self.pool.start(worker)
+
+    def _recommendation_ready(self, result):
+        generation, device, recommendation = result
+        if generation != self.identity_generation or self.current_device != device:
+            return
+        self.driver_recommendation = recommendation
+        self.model_choice.clear()
+        self.model_choice.addItem("설치된 CUPS 모델 선택", None)
+        for item in recommendation.installed_matches:
+            self.model_choice.addItem(item.description, item.model_id)
+        self.recommendation_detail.setText(recommendation.message)
+        self.recommendation_detail.setToolTip(recommendation.catalog_status)
+
+        if recommendation.preferred == "everywhere":
+            self.recommendation_summary.setText(
+                "추천: IPP Everywhere · " + recommendation.catalog_status
+            )
+        elif recommendation.preferred == "model":
+            self.recommendation_summary.setText(
+                "추천: 설치된 CUPS 모델 · " + recommendation.catalog_status
+            )
+        elif recommendation.installed_matches:
+            self.recommendation_summary.setText(
+                "확인 필요: 설치된 드라이버의 모델명과 검색명이 일치하지만 미검증입니다."
+            )
+        else:
+            self.recommendation_summary.setText(
+                "호환 드라이버 미확인 · " + recommendation.catalog_status
+            )
+
+        if recommendation.preferred_model:
+            index = self.model_choice.findData(recommendation.preferred_model)
+            if index >= 0:
+                self.model_choice.setCurrentIndex(index)
+        if not self._driver_user_edited and recommendation.preferred:
+            index = self.driver.findData(recommendation.preferred)
+            if index >= 0:
+                self.driver.setCurrentIndex(index)
+        self._driver_changed()
+
+    def _recommendation_failed(
+        self, generation: int, device: DiscoveredPrinter, message: str,
+    ):
+        if generation != self.identity_generation or self.current_device != device:
+            return
+        self.driver_recommendation = None
+        self.model_choice.clear()
+        self.model_choice.addItem("설치된 CUPS 드라이버 조회 실패", None)
+        self._driver_changed()
+        self.recommendation_summary.setText("드라이버 자동 추천에 실패했습니다.")
+        self.recommendation_detail.setText(
+            "CUPS 드라이버 목록을 읽지 못했습니다. PPD 파일을 직접 지정할 수 있습니다."
+        )
 
     def _identity_failed(self, generation: int, device: DiscoveredPrinter, message: str):
         if generation == self.identity_generation and self.current_device == device:
@@ -261,9 +356,15 @@ class PrinterSetupWidget(QWidget):
             return
         self._select_device(device)
 
-    def _driver_changed(self):
-        enabled = self.driver.currentData() == "ppd"
-        self.ppd_path.setEnabled(enabled)
+    def _mark_driver_user_edited(self, _index: int):
+        self._driver_user_edited = True
+
+    def _driver_changed(self, _index: int = 0):
+        selected = self.driver.currentData()
+        self.ppd_path.setEnabled(selected == "ppd")
+        self.model_choice.setEnabled(
+            selected == "model" and self.model_choice.count() > 1
+        )
 
     def choose_ppd(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -292,8 +393,13 @@ class PrinterSetupWidget(QWidget):
             self.current_device.uri,
             self.driver.currentData(),
             self.ppd_path.text().strip() or None,
+            self.model_choice.currentData() if self.driver.currentData() == "model" else None,
         )
-        driver_name = "IPP Everywhere" if registration.driver == "everywhere" else "PPD"
+        driver_name = {
+            "everywhere": "IPP Everywhere",
+            "ppd": "PPD",
+            "model": "설치된 CUPS 모델",
+        }.get(registration.driver, "미확인")
         driver_warning = ""
         if registration.driver == "everywhere" and (
             self.identity_result is None or self.identity_result.driverless == "unknown"
@@ -311,7 +417,8 @@ class PrinterSetupWidget(QWidget):
             f"프린터: {registration.name}\n"
             f"연결: {registration.uri}\n"
             f"식별 모델: {self.identity_result.name if self.identity_result else '미확인'}\n"
-            f"드라이버: {driver_name}\n\n"
+            f"드라이버: {driver_name}\n"
+            f"CUPS 모델 ID: {registration.driver_model or '해당 없음'}\n\n"
             + driver_warning
             + "내 Crostini CUPS에 새 프린터 큐를 등록할까요?\n"
             "다른 PC와 프린터 자체의 설정은 변경되지 않습니다."
