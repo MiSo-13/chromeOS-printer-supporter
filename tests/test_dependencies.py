@@ -5,7 +5,7 @@ from subprocess import CompletedProcess
 import pytest
 
 from printer_supporter.dependencies import (
-    CUPS, LIBREOFFICE, Dependency, DependencyInstallError, DependencyManager,
+    CUPS, LIBREOFFICE, IPP_TOOLS, Dependency, DependencyInstallError, DependencyManager,
 )
 
 
@@ -23,7 +23,7 @@ def test_missing_required_and_optional(tmp_path):
     installed = ("lp", "lpstat", "cancel", "sudo", "apt-get")
     service = manager(tmp_path, binaries=installed)
     assert service.missing(required_only=True) == []
-    assert service.missing() == [LIBREOFFICE]
+    assert service.missing() == [LIBREOFFICE, IPP_TOOLS]
 
 
 def test_missing_cups(tmp_path):
@@ -80,3 +80,12 @@ def test_unsupported_platform_is_rejected(tmp_path):
     service.os_release.write_text("ID=fedora\n", encoding="utf-8")
     with pytest.raises(DependencyInstallError, match="Debian/Ubuntu"):
         service.install([CUPS], approved=True)
+
+
+def test_ipp_tool_requires_explicit_approval_and_whitelisted_package(tmp_path):
+    service = manager(tmp_path, binaries=("sudo", "apt-get"))
+    assert service.installation_command([IPP_TOOLS]) == [
+        "sudo", "-n", "apt-get", "install", "-y", "cups-ipp-utils",
+    ]
+    with pytest.raises(DependencyInstallError, match="동의"):
+        service.install([IPP_TOOLS])

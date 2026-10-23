@@ -33,7 +33,12 @@ LIBREOFFICE = Dependency(
     "Word, Excel, PowerPoint 및 ODF 문서를 PDF로 변환할 때 필요합니다.",
     ("libreoffice",), ("libreoffice",), False,
 )
-DEPENDENCIES = (CUPS, LIBREOFFICE)
+IPP_TOOLS = Dependency(
+    "ipp-utils", "IPP 프린터 정보 도구",
+    "프린터 제조사·모델·IPP 지원 속성을 읽는 ipptool 명령입니다.",
+    ("cups-ipp-utils",), ("ipptool",), False,
+)
+DEPENDENCIES = (CUPS, LIBREOFFICE, IPP_TOOLS)
 
 
 class DependencyInstallError(RuntimeError):

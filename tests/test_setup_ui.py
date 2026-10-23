@@ -35,3 +35,4 @@ def test_setup_does_not_search_automatically(monkeypatch):
     widget.apply_manual()
     assert widget.uri.text() == "socket://192.168.6.147:9100"
     widget.close()
+
