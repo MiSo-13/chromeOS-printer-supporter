@@ -621,6 +621,9 @@ class MainWindow(QMainWindow):
             self.status.setText(f"문서는 선택했지만 최근 폴더 저장에 실패했습니다: {exc}")
 
     def _paste_document(self):
+        focused = QApplication.focusWidget()
+        if isinstance(focused, (QLineEdit, QTextEdit, QSpinBox, QComboBox)):
+            return
         clipboard = QApplication.clipboard()
         path = local_document_from_mime(clipboard.mimeData())
         if path is not None:
@@ -630,8 +633,9 @@ class MainWindow(QMainWindow):
 
     def choose_file(self):
         extensions = " ".join(f"*{ext}" for ext in sorted(SUPPORTED_EXTENSIONS))
-        saved = Path(self.settings.data.get("last_document_dir", ""))
-        initial_dir = saved if saved.is_dir() else Path.home()
+        stored_dir = self.settings.data.get("last_document_dir", "")
+        saved = Path(stored_dir).expanduser() if stored_dir else None
+        initial_dir = saved if saved is not None and saved.is_dir() else Path.home()
         name, _ = QFileDialog.getOpenFileName(
             self, "인쇄할 문서 선택", str(initial_dir), f"지원 문서 ({extensions})"
         )
