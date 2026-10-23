@@ -11,6 +11,8 @@ from typing import Callable, Sequence
 import re
 import shutil
 
+from .capabilities import PrinterOption, parse_printer_options, validate_job_options
+
 
 PDF_EXTENSIONS = {".pdf"}
 OFFICE_EXTENSIONS = {
@@ -98,6 +100,11 @@ class CupsService:
         """CUPS 스케줄러가 종료 처리한 이력(실제 출력 성공 여부와 무관)."""
         return parse_jobs(_execute(["lpstat", "-W", "completed", "-o", printer], self.runner))
 
+    def printer_options(self, printer: str) -> dict[str, PrinterOption]:
+        if not printer or printer.startswith("-"):
+            raise PrintError("올바른 프린터를 선택해 주세요.")
+        return parse_printer_options(_execute(["lpoptions", "-p", printer, "-l"], self.runner))
+
     def printer_reasons(self, printer: str) -> str:
         # 장치 상태는 백엔드 프로토콜에 따라 노출 수준이 다릅니다.
         return _execute(["lpstat", "-p", printer, "-l"], self.runner).strip()
@@ -121,11 +128,12 @@ class CupsService:
         if not re.fullmatch(r"[A-Za-z0-9_.-]+-[0-9]+", job.job_id) or job.printer != job.job_id.rsplit("-", 1)[0]:
             raise PrintError("올바르지 않은 인쇄 작업 ID입니다.")
 
-    def print_test_page(self, printer: str, *, media: str = "A4") -> str:
+    def print_test_page(self, printer: str, *, media: str | None = "A4",
+                        options: dict[str, str] | None = None) -> str:
         """선택한 CUPS 큐에 ASCII 텍스트 테스트 페이지를 한 장 전송합니다."""
         if not printer or printer.startswith("-"):
             raise PrintError("올바른 프린터를 선택해 주세요.")
-        if media not in {"A4", "Letter"}:
+        if media is not None and (not isinstance(media, str) or not re.fullmatch(r"[A-Za-z0-9_.+-]+", media)):
             raise PrintError("지원하지 않는 테스트 용지 크기입니다.")
 
         with TemporaryDirectory(prefix="printhub-test-") as temp:
@@ -135,7 +143,7 @@ class CupsService:
                 "========================================\n"
                 f"Printer : {printer}\n"
                 f"Date    : {datetime.now().astimezone().isoformat(timespec='seconds')}\n"
-                f"Paper   : {media}\n"
+                f"Paper   : {media or 'printer default'}\n"
                 "----------------------------------------\n"
                 "ABCDEFGHIJKLMNOPQRSTUVWXYZ\n"
                 "abcdefghijklmnopqrstuvwxyz\n"
@@ -144,9 +152,10 @@ class CupsService:
                 "If you can read this page, the CUPS print path is working.\n",
                 encoding="ascii",
             )
-            return self._submit(page, printer, 1, media)
+            return self._submit(page, printer, 1, media, options=options)
 
-    def print_file(self, source: Path, printer: str, *, copies: int = 1, media: str = "A4") -> str:
+    def print_file(self, source: Path, printer: str, *, copies: int = 1,
+                   media: str | None = "A4", options: dict[str, str] | None = None) -> str:
         source = Path(source).expanduser()
         if not source.is_file():
             raise PrintError("선택한 파일이 존재하지 않습니다.")
@@ -172,11 +181,25 @@ class CupsService:
                 converted = output_dir / f"{source.stem}.pdf"
                 if not converted.is_file():
                     raise PrintError("Office 문서를 PDF로 변환하지 못했습니다.")
-                return self._submit(converted, printer, copies, media)
-        return self._submit(source, printer, copies, media)
+                return self._submit(converted, printer, copies, media, options=options)
+        return self._submit(source, printer, copies, media, options=options)
 
-    def _submit(self, path: Path, printer: str, copies: int, media: str) -> str:
-        return _execute(
-            ["lp", "-d", printer, "-n", str(copies), "-o", f"media={media}", "--", str(path)],
-            self.runner,
-        ).strip()
+    def _submit(self, path: Path, printer: str, copies: int, media: str | None,
+                *, options: dict[str, str] | None = None) -> str:
+        selection = dict(options or {})
+        try:
+            validate_job_options(selection)
+        except ValueError as exc:
+            raise PrintError(str(exc)) from exc
+        if media is not None and not re.fullmatch(r"[A-Za-z0-9_.+-]+", media):
+            raise PrintError("올바르지 않은 용지 크기입니다.")
+
+        command = ["lp", "-d", printer, "-n", str(copies)]
+        # PageSize와 media를 동시에 지정하면 충돌할 수 있으므로 실제 지원 키를 우선합니다.
+        has_paper = any(key.lower() in {"pagesize", "media", "media-size"} for key in selection)
+        if media is not None and not has_paper:
+            command.extend(["-o", f"media={media}"])
+        for key, value in selection.items():
+            command.extend(["-o", f"{key}={value}"])
+        command.extend(["--", str(path)])
+        return _execute(command, self.runner).strip()
