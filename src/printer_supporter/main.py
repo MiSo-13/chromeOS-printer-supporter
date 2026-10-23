@@ -341,8 +341,8 @@ class MainWindow(QMainWindow):
         footer.addWidget(credit)
         layout.addLayout(footer)
 
-        paste_shortcut = QShortcut(QKeySequence.StandardKey.Paste, self)
-        paste_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        paste_shortcut = QShortcut(QKeySequence.StandardKey.Paste, document_panel)
+        paste_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         paste_shortcut.activated.connect(self._paste_document)
 
         self.timer = QTimer(self)
