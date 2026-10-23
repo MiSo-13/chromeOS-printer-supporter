@@ -6,6 +6,14 @@ QLabel#previewPlaceholder { background: #edf1f5; color: #56677a; padding: 16px; 
 QLabel#previewImage { background: #ffffff; }
 QPlainTextEdit#previewText { background: #ffffff; color: #25313c; border: 1px solid #dce2e8; border-radius: 6px; padding: 12px; }
 
+QLabel#focusSupportSummary { background: #e8f0fa; color: #174c85; border: 1px solid #bfcee1; border-radius: 5px; padding: 9px 11px; font-weight: 700; }
+QLabel#focusSupportDetail { color: #394c60; padding: 4px 2px; }
+QTabWidget#queueTabs::pane { background: #ffffff; border: 1px solid #bfcbd9; border-top: 2px solid #8da9c9; border-radius: 6px; }
+QTabBar#queueTabBar::tab { background: #e3e9f1; color: #3a4f67; border: 1px solid #b8c7d7; border-bottom: 3px solid #afc0d0; border-radius: 7px 7px 0 0; margin-right: 8px; min-width: 136px; padding: 12px 18px; font-weight: 500; }
+QTabBar#queueTabBar::tab:selected { background: #d9e9ff; color: #124f91; border-color: #7da9d9; border-bottom: 3px solid #1673d1; font-weight: 700; }
+QTabBar#queueTabBar::tab:hover:!selected { background: #f0f5fb; color: #174c85; border-color: #7da9d9; }
+QTabBar#queueTabBar::tab:focus { border-color: #1673d1; }
+
 QLabel#dropHint { color: #556477; font-size: 12px; padding: 6px 2px; }
 
 QLabel#diagnosisSummary { font-size: 15px; font-weight: 600; padding: 12px; background: #e8f0f9; border-radius: 7px; }
@@ -53,6 +61,14 @@ QWidget#documentPreview, QScrollArea#previewScroll { background: #303843; border
 QLabel#previewPlaceholder { background: #303843; color: #c0cad5; padding: 16px; border-radius: 6px; }
 QLabel#previewImage { background: #ffffff; }
 QPlainTextEdit#previewText { background: #242b34; color: #e1e6ed; border: 1px solid #3b4551; border-radius: 6px; padding: 12px; }
+
+QLabel#focusSupportSummary { background: #263d57; color: #c4e2ff; border: 1px solid #426789; border-radius: 5px; padding: 9px 11px; font-weight: 700; }
+QLabel#focusSupportDetail { color: #d2dde9; padding: 4px 2px; }
+QTabWidget#queueTabs::pane { background: #242b34; border: 1px solid #4c596b; border-top: 2px solid #65819e; border-radius: 6px; }
+QTabBar#queueTabBar::tab { background: #313b48; color: #d1ddeb; border: 1px solid #586879; border-bottom: 3px solid #536477; border-radius: 7px 7px 0 0; margin-right: 8px; min-width: 136px; padding: 12px 18px; font-weight: 500; }
+QTabBar#queueTabBar::tab:selected { background: #244e79; color: #ffffff; border-color: #6ea0d3; border-bottom: 3px solid #8cc9ff; font-weight: 700; }
+QTabBar#queueTabBar::tab:hover:!selected { background: #405367; color: #ffffff; border-color: #86b5e3; }
+QTabBar#queueTabBar::tab:focus { border-color: #9cd4ff; }
 
 QLabel#dropHint { color: #b8c4d1; font-size: 12px; padding: 6px 2px; }
 
