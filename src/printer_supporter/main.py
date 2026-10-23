@@ -22,7 +22,7 @@ from PyQt6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QHBoxLayout, QLabel,
     QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
-    QSpinBox, QTabWidget, QTextEdit, QVBoxLayout, QWidget, QLineEdit, QGroupBox,
+    QSpinBox, QTabWidget, QTextEdit, QVBoxLayout, QWidget, QLineEdit, QGroupBox, QStackedWidget, QFrame,
 )
 
 from .backend import CupsService, PrintError, PrintJob, SUPPORTED_EXTENSIONS
@@ -63,21 +63,10 @@ class MainWindow(QMainWindow):
         self.option_generation = 0
         self.option_printer = ""
         self.option_keys: dict[str, str] = {}
-        self.setWindowTitle("PrintHub · ChromeOS 프린터 관리자")
+        self.setWindowTitle("PrintHub")
         self.resize(1000, 760)
-        self.setStyleSheet("""
-            QMainWindow, QWidget { background: #f6f7f9; color: #222b35; font-size: 13px; }
-            QTabWidget::pane { border: 1px solid #dce1e6; background: #ffffff; border-radius: 8px; }
-            QTabBar::tab { padding: 11px 19px; color: #5a6672; background: #edf0f3; }
-            QTabBar::tab:selected { background: #ffffff; color: #1d4d8f; font-weight: 600; }
-            QPushButton { background: #ffffff; border: 1px solid #cbd3dc; border-radius: 6px; padding: 8px 13px; }
-            QPushButton:hover { border-color: #447ab6; }
-            QPushButton:disabled { color: #9aa4ae; background: #f1f3f5; }
-            QComboBox, QSpinBox, QLineEdit { background: #ffffff; border: 1px solid #cbd3dc; border-radius: 5px; padding: 6px; }
-            QListWidget, QTextEdit { background: #ffffff; border: 1px solid #dce1e6; border-radius: 5px; }
-            QGroupBox { background: #ffffff; border: 1px solid #dce1e6; border-radius: 8px; margin-top: 12px; padding: 14px; font-weight: 600; }
-            QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 5px; }
-        """)
+        from .theme import APP_STYLESHEET
+        self.setStyleSheet(APP_STYLESHEET)
 
         root = QWidget()
         layout = QVBoxLayout(root)
@@ -103,24 +92,51 @@ class MainWindow(QMainWindow):
         selection.addWidget(check_packages)
         layout.addLayout(selection)
 
-        tabs = QTabWidget()
-        layout.addWidget(tabs, 1)
+        workspace = QHBoxLayout()
+        workspace.setSpacing(16)
+        layout.addLayout(workspace, 1)
+        sidebar = QFrame()
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(170)
+        side_layout = QVBoxLayout(sidebar)
+        side_layout.setSpacing(5)
+        tabs = QStackedWidget()
+        self.navigation = []
+        def add_page(page, title):
+            index = tabs.addWidget(page)
+            button = QPushButton(title)
+            button.setObjectName("navButton")
+            button.setCheckable(True)
+            button.clicked.connect(lambda checked=False, i=index: self._switch_page(i))
+            side_layout.addWidget(button)
+            self.navigation.append(button)
+        workspace.addWidget(sidebar)
+        workspace.addWidget(tabs, 1)
 
         print_page = QWidget()
-        print_layout = QVBoxLayout(print_page)
+        print_layout = QHBoxLayout(print_page)
+        print_layout.setSpacing(16)
+        document_panel = QWidget()
+        document_layout = QVBoxLayout(document_panel)
+        settings_panel = QFrame()
+        settings_panel.setObjectName("settingsPanel")
+        settings_panel.setFixedWidth(310)
+        settings_layout = QVBoxLayout(settings_panel)
+        print_layout.addWidget(document_panel, 1)
+        print_layout.addWidget(settings_panel)
         file_row = QHBoxLayout()
         self.file_label = QLabel("선택한 문서 없음")
         file_row.addWidget(self.file_label, 1)
         choose = QPushButton("문서 선택")
         choose.clicked.connect(self.choose_file)
         file_row.addWidget(choose)
-        print_layout.addLayout(file_row)
-        print_layout.addWidget(QLabel("PDF · Office 문서 · 이미지 · 텍스트"))
+        document_layout.addLayout(file_row)
+        document_layout.addWidget(QLabel("PDF · Office · 이미지 · 텍스트"))
         preview_group = QGroupBox("문서 미리보기")
         preview_layout = QVBoxLayout(preview_group)
         self.preview_label = QLabel("PDF 파일을 선택하면 미리보기가 표시됩니다.")
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_label.setMinimumHeight(230)
+        self.preview_label.setMinimumHeight(370)
         self.preview_label.setStyleSheet("background: #f0f2f5; border-radius: 6px; color: #64717e;")
         preview_layout.addWidget(self.preview_label)
         navigation = QHBoxLayout()
@@ -135,7 +151,7 @@ class MainWindow(QMainWindow):
         navigation.addWidget(self.next_page)
         navigation.addStretch()
         preview_layout.addLayout(navigation)
-        print_layout.addWidget(preview_group)
+        document_layout.addWidget(preview_group, 1)
         self.preview_index = 0
         self.preview_count = 0
         self.prev_page.setEnabled(False)
@@ -145,14 +161,14 @@ class MainWindow(QMainWindow):
         self.page_range = QLineEdit()
         self.page_range.setPlaceholderText("전체 페이지 (예: 1-3, 5)")
         range_row.addWidget(self.page_range, 1)
-        print_layout.addLayout(range_row)
+        settings_layout.addLayout(range_row)
         options = QHBoxLayout()
         options.addWidget(QLabel("인쇄 매수"))
         self.copies = QSpinBox()
         self.copies.setRange(1, 99)
         options.addWidget(self.copies)
         options.addStretch()
-        print_layout.addLayout(options)
+        settings_layout.addLayout(options)
 
         # 지원하지 않거나 알려지지 않은 옵션은 프린터 기본값을 사용합니다.
         from PyQt6.QtWidgets import QFormLayout
@@ -177,9 +193,9 @@ class MainWindow(QMainWindow):
             control.addItem("프린터 기본값", None)
             control.setEnabled(False)
             option_form.addRow(option_labels[feature], control)
-        print_layout.addLayout(option_form)
+        settings_layout.addLayout(option_form)
         self.option_info = QLabel("프린터 옵션을 확인 중입니다…")
-        print_layout.addWidget(self.option_info)
+        settings_layout.addWidget(self.option_info)
         print_actions = QHBoxLayout()
         self.print_button = QPushButton("인쇄")
         self.print_button.setStyleSheet("background: #225e9e; color: white; border: none; font-weight: 600; padding: 10px 22px;")
@@ -188,10 +204,10 @@ class MainWindow(QMainWindow):
         self.test_page_button = QPushButton("테스트 페이지 인쇄")
         self.test_page_button.clicked.connect(self.print_test_page)
         print_actions.addWidget(self.test_page_button)
-        print_layout.addLayout(print_actions)
+        settings_layout.addLayout(print_actions)
         
-        print_layout.addStretch()
-        tabs.addTab(print_page, "문서 인쇄")
+        settings_layout.addStretch()
+        add_page(print_page, "문서 인쇄")
 
         queue_page = QWidget()
         queue_layout = QVBoxLayout(queue_page)
@@ -224,7 +240,7 @@ class MainWindow(QMainWindow):
         self.queue_info = QLabel("목록 갱신 중…")
         queue_layout.addWidget(self.queue_info)
         
-        tabs.addTab(queue_page, "인쇄 대기열")
+        add_page(queue_page, "인쇄 대기열")
         self._update_queue_actions()
 
         state_page = QWidget()
@@ -233,9 +249,11 @@ class MainWindow(QMainWindow):
         self.state_text.setReadOnly(True)
         state_layout.addWidget(self.state_text)
         
-        tabs.addTab(state_page, "상태 및 오류")
+        add_page(state_page, "프린터 상태")
 
-        tabs.addTab(PrinterSetupWidget(on_registered=self.refresh_all), "프린터 추가")
+        add_page(PrinterSetupWidget(on_registered=self.refresh_all), "프린터 추가")
+        side_layout.addStretch()
+        self._switch_page(0)
 
         self.timer = QTimer(self)
         self.timer.setInterval(5000)
@@ -243,6 +261,11 @@ class MainWindow(QMainWindow):
         self.timer.start()
         self.refresh_all()
         QTimer.singleShot(100, lambda: self.check_dependencies(required_only=True))
+
+    def _switch_page(self, index: int):
+        self.centralWidget().findChild(QStackedWidget).setCurrentIndex(index)
+        for position, button in enumerate(self.navigation):
+            button.setChecked(position == index)
 
     def _background(self, operation, completed):
         task = Task(operation)
@@ -322,7 +345,7 @@ class MainWindow(QMainWindow):
         if not printer:
             self.option_info.setText("프린터를 선택해 주세요.")
             return
-        self.option_info.setText(f"{printer} 지원 옵션 조회 중…")
+        self.option_info.setText("인쇄 설정을 불러오는 중…")
         task = Task(lambda: (printer, generation, self.service.printer_options(printer)))
         task.signals.finished.connect(self._populate_options)
         task.signals.failed.connect(
@@ -353,7 +376,7 @@ class MainWindow(QMainWindow):
             control.setCurrentIndex(default_index)
             control.setEnabled(len(option.choices) > 1)
         self.option_info.setText(
-            f"{printer}: 지원 옵션 {len(supported)}종 감지 · 미지원 항목은 기본값을 사용합니다."
+            "인쇄 설정을 불러왔습니다."
         )
 
     def _selected_print_options(self) -> dict[str, str]:
@@ -408,7 +431,7 @@ class MainWindow(QMainWindow):
         for job in jobs:
             owned = "내 작업" if job.owner == getpass.getuser() else "다른 사용자"
             item = QListWidgetItem(
-                f"대기/처리 중  |  {job.job_id}  |  {owned} ({job.owner})  |  "
+                f"{job.job_id}  ·  {owned} ({job.owner})  ·  "
                 f"{job.size} bytes  |  {job.submitted}"
             )
             item.setData(Qt.ItemDataRole.UserRole, job.job_id)
@@ -416,7 +439,7 @@ class MainWindow(QMainWindow):
             if job.job_id == selected_id:
                 self.job_list.setCurrentItem(item)
         self._update_queue_actions()
-        self.queue_info.setText(f"진행 중인 작업 {len(jobs)}건 · 5초마다 자동 갱신")
+        self.queue_info.setText(f"진행 중 {len(jobs)}건")
 
     def _populate_history(self, result):
         printer, generation, jobs = result
@@ -426,7 +449,7 @@ class MainWindow(QMainWindow):
         self.history_list.clear()
         for job in jobs[:100]:
             self.history_list.addItem(
-                f"CUPS 처리 종료  |  {job.job_id}  |  {job.owner}  |  "
+                f"{job.job_id}  ·  {job.owner}  ·  "
                 f"{job.size} bytes  |  {job.submitted}"
             )
 
@@ -497,7 +520,7 @@ class MainWindow(QMainWindow):
         try:
             image = QPixmap()
             image.loadFromData(render_pdf_page(self.selected_file, index))
-            self.preview_label.setPixmap(image.scaled(700, 320, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.preview_label.setPixmap(image.scaled(max(400, self.preview_label.width() - 20), 460, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
             self.preview_index = index
             self.page_indicator.setText(f"{index + 1} / {self.preview_count}")
             self.prev_page.setEnabled(index > 0)
