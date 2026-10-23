@@ -121,3 +121,70 @@ def test_discovery_does_not_scan_network_ranges():
     devices = DiscoveryService(runner=runner).discover()
     assert len(devices) == 1
     assert calls == [["lpinfo", "-v"]]
+
+
+def test_installed_cups_model_registration_requires_user_approval():
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        if command == ["lpstat", "-e"]:
+            return CompletedProcess(command, 0, "", "")
+        if command == ["lpinfo", "-m"]:
+            return CompletedProcess(
+                command, 0,
+                "drv:///samsung/m203x.ppd Samsung M203x Series\\n", "",
+            )
+        return CompletedProcess(command, 0, "", "")
+
+    service = DiscoveryService(runner=runner)
+    registration = Registration(
+        "Samsung_M203x", "socket://192.168.6.147:9100",
+        "model", None, "drv:///samsung/m203x.ppd",
+    )
+    with pytest.raises(PrinterRegistrationError, match="사용자 확인"):
+        service.register(registration)
+    assert not calls
+
+    service.register(registration, approved=True)
+    assert calls[:2] == [["lpstat", "-e"], ["lpinfo", "-m"]]
+    assert calls[2][-2:] == ["-m", "drv:///samsung/m203x.ppd"]
+    assert calls[2][:3] == ["sudo", "-n", "lpadmin"]
+    assert "-d" not in calls[2]
+
+
+def test_cups_model_unavailable_at_registration_cannot_be_submitted():
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        if command == ["lpinfo", "-m"]:
+            return CompletedProcess(
+                command, 0, "drv:///other.ppd Samsung M2030W\\n", "",
+            )
+        return CompletedProcess(command, 0, "", "")
+
+    service = DiscoveryService(runner=runner)
+    with pytest.raises(PrinterRegistrationError, match="설치 목록"):
+        service.register(
+            Registration("Printer_1", "socket://192.168.6.147:9100", "model",
+                         None, "drv:///samsung/m203x.ppd"),
+            approved=True,
+        )
+    assert not any("lpadmin" in c for c in calls)
+
+
+@pytest.mark.parametrize("model", [None, "raw", "everywhere", "bad model",
+                                    "-P", "bad\\nvalue"])
+def test_invalid_cups_model_rejected_before_any_system_command(model):
+    calls = []
+    service = DiscoveryService(
+        runner=lambda command, **kwargs: calls.append(command)
+    )
+    with pytest.raises(PrinterRegistrationError, match="모델 ID"):
+        service.register(
+            Registration("Printer_1", "ipp://192.168.6.147/ipp/print",
+                         "model", None, model),
+            approved=True,
+        )
+    assert calls == []
