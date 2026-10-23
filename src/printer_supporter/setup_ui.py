@@ -102,7 +102,8 @@ class PrinterSetupWidget(QWidget):
             "프린터 자체의 설정은 바꾸지 않습니다. 기존 CUPS 큐도 덮어쓰지 않습니다."
         ))
         self._driver_changed()
-        self.search()
+        # lpinfo -v는 일부 Crostini CUPS에서 관리자 권한이 필요합니다.
+        # 앱 시작 시 자동 실행하지 않고 사용자가 검색 버튼을 누를 때만 실행합니다.
 
     def _background(self, operation, callback):
         worker = Worker(operation)
@@ -116,10 +117,23 @@ class PrinterSetupWidget(QWidget):
         self.register_button.setEnabled(True)
         QMessageBox.warning(self, "프린터 설정 오류", message)
 
+    def _search_failed(self, message: str):
+        self.scan_button.setEnabled(True)
+        if "forbidden" in message.lower() or "not authorized" in message.lower():
+            self.status.setText(
+                "CUPS가 네트워크 검색(lpinfo)을 거부했습니다. "
+                "IP 주소 직접 입력이나 기존 등록 프린터 사용은 가능합니다."
+            )
+        else:
+            self.status.setText(f"네트워크 검색 실패: {message} · IP 직접 입력은 가능합니다.")
+
     def search(self):
         self.scan_button.setEnabled(False)
         self.status.setText("CUPS에서 네트워크 프린터를 검색 중입니다…")
-        self._background(self.service.discover, self._populate)
+        worker = Worker(self.service.discover)
+        worker.signals.finished.connect(self._populate)
+        worker.signals.failed.connect(self._search_failed)
+        self.pool.start(worker)
 
     def _populate(self, devices):
         self.scan_button.setEnabled(True)
