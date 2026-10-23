@@ -22,7 +22,7 @@ from PyQt6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, QEvent, py
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QHBoxLayout, QLabel,
     QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
-    QSpinBox, QTabWidget, QTextEdit, QVBoxLayout, QWidget, QLineEdit, QGroupBox, QStackedWidget, QFrame,
+    QSpinBox, QTabWidget, QTextEdit, QPlainTextEdit, QVBoxLayout, QWidget, QLineEdit, QGroupBox, QStackedWidget, QFrame,
 )
 
 from .backend import CupsService, PrintError, PrintJob, SUPPORTED_EXTENSIONS
@@ -349,17 +349,29 @@ class MainWindow(QMainWindow):
         self.refresh_all()
         QTimer.singleShot(100, lambda: self.check_dependencies(required_only=True))
 
+    @staticmethod
+    def _text_input_has_focus() -> bool:
+        """실제로 편집 가능한 입력란의 일반 Ctrl+V만 보호합니다."""
+        focused = QApplication.focusWidget()
+        if isinstance(focused, (QLineEdit, QTextEdit, QPlainTextEdit)):
+            return not focused.isReadOnly()
+        if isinstance(focused, QSpinBox):
+            return True
+        if isinstance(focused, QComboBox):
+            return focused.isEditable()
+        return False
+
     def eventFilter(self, watched, event):
-        """PDF Helper와 동일하게 앱 전체에서 파일 Ctrl+V를 감지합니다."""
+        """프린터 선택창을 포함해 앱 어디서나 복사한 문서 파일을 붙여넣습니다."""
         if (event.type() == QEvent.Type.KeyPress and self.isActiveWindow()
                 and event.key() == Qt.Key.Key_V
                 and event.modifiers() == Qt.KeyboardModifier.ControlModifier
                 and isinstance(watched, QWidget)
                 and (watched is self or self.isAncestorOf(watched))
-                and not isinstance(QApplication.focusWidget(), (QLineEdit, QTextEdit, QSpinBox, QComboBox))):
-            mime = QApplication.clipboard().mimeData()
-            if local_document_from_mime(mime) is not None:
-                self._paste_document()
+                and not self._text_input_has_focus()):
+            path = local_document_from_mime(QApplication.clipboard().mimeData())
+            if path is not None:
+                self._set_document(path)
                 return True
         return super().eventFilter(watched, event)
 
@@ -654,17 +666,6 @@ class MainWindow(QMainWindow):
             self.settings.set_last_document_dir(path.parent)
         except OSError as exc:
             self.status.setText(f"문서는 선택했지만 최근 폴더 저장에 실패했습니다: {exc}")
-
-    def _paste_document(self):
-        focused = QApplication.focusWidget()
-        if isinstance(focused, (QLineEdit, QTextEdit, QSpinBox, QComboBox)):
-            return
-        clipboard = QApplication.clipboard()
-        path = local_document_from_mime(clipboard.mimeData())
-        if path is not None:
-            self._set_document(path)
-        else:
-            self.status.setText("클립보드에 지원되는 로컬 파일 또는 파일 경로가 없습니다.")
 
     def choose_file(self):
         extensions = " ".join(f"*{ext}" for ext in sorted(SUPPORTED_EXTENSIONS))
