@@ -69,8 +69,8 @@ def test_ldd_missing_dependency_parsing(tmp_path):
     def runner(command, **kwargs):
         calls.append(command)
         return CompletedProcess(command, 0,
-                                "    libxcb-cursor.so.0 => not found\\n"
-                                "    libX11.so.6 => /lib/libX11.so.6\\n", "")
+                                "    libxcb-cursor.so.0 => not found\n"
+                                "    libX11.so.6 => /lib/libX11.so.6\n", "")
 
     assert missing_xcb_libraries(plugin, runner=runner) == ("libxcb-cursor.so.0",)
     assert calls == [["ldd", str(plugin)]]
