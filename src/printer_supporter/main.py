@@ -393,8 +393,10 @@ class MainWindow(QMainWindow):
         return super().eventFilter(watched, event)
 
     def closeEvent(self, event):
-        self._preview_generation += 1
-        self._release_office_preview()
+        # 이벤트 테스트에서 __init__ 없이 생성한 최소 Qt 창도 안전하게 종료합니다.
+        if hasattr(self, "_preview_generation"):
+            self._preview_generation += 1
+            self._release_office_preview()
         QApplication.instance().removeEventFilter(self)
         super().closeEvent(event)
 
