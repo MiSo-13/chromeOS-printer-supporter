@@ -42,9 +42,12 @@ class PrinterSetupWidget(QWidget):
         self.pool = QThreadPool.globalInstance()
         self.current_device: DiscoveredPrinter | None = None
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(12)
 
         layout.addWidget(QLabel("검색된 프린터 (CUPS / mDNS)"))
         scan_row = QHBoxLayout()
+        scan_row.setSpacing(12)
         self.scan_button = QPushButton("네트워크 프린터 검색")
         self.scan_button.clicked.connect(self.search)
         scan_row.addWidget(self.scan_button)
@@ -56,6 +59,8 @@ class PrinterSetupWidget(QWidget):
         layout.addWidget(self.devices)
 
         form = QFormLayout()
+        form.setHorizontalSpacing(18)
+        form.setVerticalSpacing(12)
         self.ip_input = QLineEdit()
         self.ip_input.setPlaceholderText("예: 192.168.6.147")
         form.addRow("IP 직접 입력", self.ip_input)
@@ -81,6 +86,7 @@ class PrinterSetupWidget(QWidget):
         self.ppd_path = QLineEdit()
         self.ppd_path.setPlaceholderText("삼성 ULD 등 설치된 PPD 파일 경로")
         ppd_row = QHBoxLayout()
+        ppd_row.setSpacing(12)
         ppd_row.addWidget(self.ppd_path)
         ppd_button = QPushButton("찾아보기")
         ppd_button.clicked.connect(self.choose_ppd)
@@ -89,6 +95,7 @@ class PrinterSetupWidget(QWidget):
         layout.addLayout(form)
 
         actions = QHBoxLayout()
+        actions.setSpacing(12)
         self.probe_button = QPushButton("연결 확인")
         self.probe_button.clicked.connect(self.probe)
         actions.addWidget(self.probe_button)
