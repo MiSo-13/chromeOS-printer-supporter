@@ -12,8 +12,12 @@ VALID_THEMES = {"light", "dark"}
 
 def settings_path() -> Path:
     """앱 데이터 디렉터리. 환경변수로 경로를 변경할 수 있습니다."""
-    base = os.environ.get("PRINTHUB_CONFIG_DIR")
-    return (Path(base).expanduser() if base else Path.cwd() / "data" / "config") / "settings.json"
+    override = os.environ.get("PRINTHUB_CONFIG_DIR")
+    if override:
+        return Path(override).expanduser() / "settings.json"
+    xdg_home = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg_home).expanduser() if xdg_home else Path.home() / ".config"
+    return base / "chromeos-printer-supporter" / "settings.json"
 
 
 class SettingsStore:
