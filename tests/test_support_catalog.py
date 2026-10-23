@@ -96,16 +96,28 @@ def test_case_insensitive_only_no_suffix_guessing():
     ).profile is None
 
 
-def test_catalog_is_documented_in_readme_and_supported_printers():
+def test_readme_explains_generic_compatibility_and_links_to_catalog():
     root = Path(__file__).resolve().parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")
+    assert "특정 제조사 전용 앱이 아닙니다" in readme
+    assert "IPP Everywhere" in readme
+    assert "CUPS 드라이버" in readme
+    assert "PPD" in readme
+    assert "목록에 없는 프린터도" in readme
+    assert "docs/SUPPORTED_PRINTERS.md" in readme
+
+
+def test_priority_models_are_documented_separately_with_verification_status():
+    root = Path(__file__).resolve().parents[1]
     docs = (root / "docs" / "SUPPORTED_PRINTERS.md").read_text(encoding="utf-8")
     for entry in FOCUS_PRINTERS:
-        assert entry.model in readme
         assert entry.model in docs
         assert entry.source_url in docs
-    assert "실물 출력 미검증" in docs
-    assert "목록에 없는" in docs
+    assert "일반 호환성 확인" in docs
+    assert "우선 안내 모델" in docs
+    assert "실기기 검증 완료" in docs
+    assert "현재 공개할 실기기 검증 기록은 없습니다" in docs
+    assert "목록에 없는 프린터도" in docs
 
 
 def test_epson_has_verified_official_support_landing_page():
