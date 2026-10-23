@@ -27,12 +27,28 @@ def local_document_from_text(text: str) -> Path | None:
 
 
 def local_document_from_mime(mime) -> Path | None:
+    if mime is None:
+        return None
     if mime.hasUrls():
         for url in mime.urls():
             if url.isLocalFile():
                 path = Path(url.toLocalFile())
                 if supported_document(path):
                     return path
+    # ChromeOS 파일 앱은 Qt hasUrls() 대신 원본 text/uri-list를
+    # 제공하는 경우가 있으므로 MIME payload를 직접 확인합니다.
+    for fmt in ("text/uri-list", "x-special/gnome-copied-files",
+                "application/x-kde4-urilist"):
+        if not mime.hasFormat(fmt):
+            continue
+        payload = bytes(mime.data(fmt)).decode("utf-8", errors="replace")
+        for line in payload.splitlines():
+            value = line.strip()
+            if not value or value.startswith("#") or value in ("copy", "cut"):
+                continue
+            path = local_document_from_text(value)
+            if path is not None:
+                return path
     if mime.hasText():
         return local_document_from_text(mime.text())
     return None
