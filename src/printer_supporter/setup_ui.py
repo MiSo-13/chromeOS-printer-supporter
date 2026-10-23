@@ -371,6 +371,7 @@ class PrinterSetupWidget(QWidget):
             self, "제조사 PPD 선택", "", "CUPS PPD (*.ppd)"
         )
         if path:
+            self._driver_user_edited = True
             self.ppd_path.setText(path)
             self.driver.setCurrentIndex(self.driver.findData("ppd"))
 
