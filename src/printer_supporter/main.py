@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 
 from .backend import CupsService, PrintError, PrintJob, SUPPORTED_EXTENSIONS
 from .capabilities import feature_options
+from .diagnostics import diagnose_printer
 from .preview import normalize_page_ranges, pdf_page_count, render_pdf_page
 from .settings import SettingsStore
 from .theme import stylesheet_for
@@ -264,6 +265,14 @@ class MainWindow(QMainWindow):
 
         state_page = QWidget()
         state_layout = QVBoxLayout(state_page)
+        self.diagnosis_label = QLabel("프린터를 선택하면 상태를 확인합니다.")
+        self.diagnosis_label.setObjectName("diagnosisSummary")
+        self.diagnosis_label.setWordWrap(True)
+        state_layout.addWidget(self.diagnosis_label)
+        self.diagnosis_advice = QLabel("")
+        self.diagnosis_advice.setWordWrap(True)
+        state_layout.addWidget(self.diagnosis_advice)
+        state_layout.addWidget(QLabel("CUPS 상세 정보"))
         self.state_text = QTextEdit()
         self.state_text.setReadOnly(True)
         state_layout.addWidget(self.state_text)
@@ -375,6 +384,8 @@ class MainWindow(QMainWindow):
             self.printer_box.setCurrentText("Samsung_SL_M2030W")
         self.printer_box.blockSignals(False)
         selected = next((p for p in printers if p.name == self.printer_box.currentText()), None)
+        self.selected_printer_status = selected
+        self._update_diagnosis(selected.reason if selected else "")
         self.status.setText(f"{selected.name}: {selected.state}" if selected else "등록된 CUPS 프린터 없음")
         self.refresh_jobs()
         if selected and self.option_printer != selected.name:
@@ -463,10 +474,24 @@ class MainWindow(QMainWindow):
     def _valid_queue_result(self, printer: str, generation: int) -> bool:
         return printer == self.printer_box.currentText() and generation == self.queue_generation
 
+    def _update_diagnosis(self, detail: str):
+        printer = getattr(self, "selected_printer_status", None)
+        if printer is None:
+            self.diagnosis_label.setText("등록된 프린터가 없습니다.")
+            self.diagnosis_advice.setText("프린터 추가에서 네트워크 프린터를 검색하거나 IP 주소로 등록하세요.")
+            return
+        diagnosis = diagnose_printer(printer.state, printer.enabled, detail or printer.reason)
+        self.diagnosis_label.setText(f"{printer.name} · {diagnosis.summary}")
+        self.diagnosis_advice.setText(diagnosis.advice)
+        self.diagnosis_label.setProperty("severity", diagnosis.severity)
+        self.diagnosis_label.style().unpolish(self.diagnosis_label)
+        self.diagnosis_label.style().polish(self.diagnosis_label)
+
     def _populate_reasons(self, result):
         printer, generation, reason = result
         if self._valid_queue_result(printer, generation):
             self.state_text.setPlainText(reason)
+            self._update_diagnosis(reason)
 
     def _populate_jobs(self, result):
         printer, generation, jobs = result
