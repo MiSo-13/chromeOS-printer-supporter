@@ -246,9 +246,11 @@ class PrinterSetupWidget(QWidget):
         actions = QHBoxLayout()
         actions.setSpacing(12)
         self.probe_button = QPushButton("연결 확인")
+        self.probe_button.setEnabled(False)
         self.probe_button.clicked.connect(self.probe)
         actions.addWidget(self.probe_button)
         self.register_button = QPushButton("이 프린터 등록")
+        self.register_button.setEnabled(False)
         self.register_button.clicked.connect(self.register)
         actions.addWidget(self.register_button)
         register_layout.addLayout(actions)
@@ -306,7 +308,9 @@ class PrinterSetupWidget(QWidget):
         self._scan_busy = False
         self._register_busy = False
         self.scan_button.setEnabled(True)
-        self.register_button.setEnabled(True)
+        self.register_button.setEnabled(
+            self.current_device is not None and not self._register_busy
+        )
         QMessageBox.warning(self, "프린터 설정 오류", message)
 
     def _search_failed(self, message: str):
@@ -370,6 +374,8 @@ class PrinterSetupWidget(QWidget):
 
     def _select_device(self, device: DiscoveredPrinter):
         self.current_device = device
+        self.probe_button.setEnabled(True)
+        self.register_button.setEnabled(not self._register_busy)
         self._driver_user_edited = False
         self.driver_recommendation = None
         self.install_plan = None
