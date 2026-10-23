@@ -91,16 +91,34 @@ class CupsService:
         return parse_printers(_execute(["lpstat", "-p"], self.runner))
 
     def jobs(self, printer: str) -> list[PrintJob]:
-        return parse_jobs(_execute(["lpstat", "-o", printer], self.runner))
+        return parse_jobs(_execute(["lpstat", "-W", "not-completed", "-o", printer], self.runner))
+
+    def completed_jobs(self, printer: str) -> list[PrintJob]:
+        """CUPS 스케줄러가 종료 처리한 이력(실제 출력 성공 여부와 무관)."""
+        return parse_jobs(_execute(["lpstat", "-W", "completed", "-o", printer], self.runner))
 
     def printer_reasons(self, printer: str) -> str:
         # 장치 상태는 백엔드 프로토콜에 따라 노출 수준이 다릅니다.
         return _execute(["lpstat", "-p", printer, "-l"], self.runner).strip()
 
     def cancel(self, job: PrintJob, current_user: str) -> None:
-        if job.owner != current_user:
-            raise PrintError("다른 사용자의 인쇄 작업은 취소할 수 없습니다.")
+        self._check_owner(job, current_user)
         _execute(["cancel", job.job_id], self.runner)
+
+    def hold(self, job: PrintJob, current_user: str) -> None:
+        self._check_owner(job, current_user)
+        _execute(["lp", "-i", job.job_id, "-H", "hold"], self.runner)
+
+    def resume(self, job: PrintJob, current_user: str) -> None:
+        self._check_owner(job, current_user)
+        _execute(["lp", "-i", job.job_id, "-H", "resume"], self.runner)
+
+    @staticmethod
+    def _check_owner(job: PrintJob, current_user: str) -> None:
+        if job.owner != current_user:
+            raise PrintError("다른 사용자의 인쇄 작업은 변경할 수 없습니다.")
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+-[0-9]+", job.job_id) or job.printer != job.job_id.rsplit("-", 1)[0]:
+            raise PrintError("올바르지 않은 인쇄 작업 ID입니다.")
 
     def print_file(self, source: Path, printer: str, *, copies: int = 1, media: str = "A4") -> str:
         source = Path(source).expanduser()
