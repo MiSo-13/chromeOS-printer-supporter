@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-DEFAULT_SETTINGS = {"theme": "light"}
+DEFAULT_SETTINGS = {"theme": "light", "last_document_dir": ""}
 VALID_THEMES = {"light", "dark"}
 
 
@@ -31,12 +31,23 @@ class SettingsStore:
         settings = {**DEFAULT_SETTINGS, **data}
         if settings.get("theme") not in VALID_THEMES:
             settings["theme"] = DEFAULT_SETTINGS["theme"]
+        if not isinstance(settings.get("last_document_dir"), str):
+            settings["last_document_dir"] = ""
         return settings
 
     def set_theme(self, theme: str) -> None:
         if theme not in VALID_THEMES:
             raise ValueError(f"지원하지 않는 테마: {theme}")
         updated = {**self.data, "theme": theme}
+        self._save(updated)
+
+    def set_last_document_dir(self, directory: Path) -> None:
+        directory = Path(directory).expanduser().resolve()
+        if not directory.is_dir():
+            raise ValueError("유효한 문서 폴더가 아닙니다.")
+        self._save({**self.data, "last_document_dir": str(directory)})
+
+    def _save(self, updated: dict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = None
         try:
