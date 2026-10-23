@@ -9,11 +9,11 @@ from printer_supporter.capabilities import (
 
 def test_samsung_m203x_ppd_options_are_detected():
     output = (
-        "PageSize/Media Size: *A4 Letter Legal\\n"
-        "ColorModel/Color Mode: *Gray\\n"
-        "Duplex/2-Sided Printing: *None DuplexNoTumble DuplexTumble\\n"
-        "Resolution/Resolution: *600dpi 1200dpi\\n"
-        "InputSlot/Media Source: *Auto Tray1\\n"
+        "PageSize/Media Size: *A4 Letter Legal\n"
+        "ColorModel/Color Mode: *Gray\n"
+        "Duplex/2-Sided Printing: *None DuplexNoTumble DuplexTumble\n"
+        "Resolution/Resolution: *600dpi 1200dpi\n"
+        "InputSlot/Media Source: *Auto Tray1\n"
     )
     supported = feature_options(parse_printer_options(output))
     assert supported["paper"].key == "PageSize"
@@ -27,11 +27,11 @@ def test_samsung_m203x_ppd_options_are_detected():
 
 def test_driverless_ipp_style_options_supported():
     output = (
-        "media/Media Size: *iso_a4_210x297mm na_letter_8.5x11in\\n"
-        "print-color-mode/Print Color Mode: *monochrome color\\n"
-        "sides/2-Sided Printing: *one-sided two-sided-long-edge\\n"
-        "print-quality/Print Quality: 3 *4 5\\n"
-        "printer-resolution/Printer Resolution: *300dpi 600dpi\\n"
+        "media/Media Size: *iso_a4_210x297mm na_letter_8.5x11in\n"
+        "print-color-mode/Print Color Mode: *monochrome color\n"
+        "sides/2-Sided Printing: *one-sided two-sided-long-edge\n"
+        "print-quality/Print Quality: 3 *4 5\n"
+        "printer-resolution/Printer Resolution: *300dpi 600dpi\n"
     )
     supported = feature_options(parse_printer_options(output))
     assert len(supported) == 5
@@ -41,7 +41,7 @@ def test_driverless_ipp_style_options_supported():
 
 
 def test_invalid_or_unrecognized_lines_are_ignored():
-    output = "broken line\\n-unsafe/Unsafe: *bad\\nPageSize/Size: *A4 A4\\n"
+    output = "broken line\n-unsafe/Unsafe: *bad\nPageSize/Size: *A4 A4\n"
     options = parse_printer_options(output)
     assert list(options) == ["PageSize"]
     assert len(options["PageSize"].choices) == 1
