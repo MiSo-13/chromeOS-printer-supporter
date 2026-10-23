@@ -11,9 +11,6 @@ from urllib.parse import unquote, urlsplit
 import re
 import socket
 
-from .backend import parse_printers
-
-
 ALLOWED_SCHEMES = {"ipp", "ipps", "dnssd", "socket"}
 QUEUE_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,63}$")
 
@@ -132,8 +129,8 @@ class DiscoveryService:
         if not approved:
             raise PrinterRegistrationError("프린터 등록 전에 사용자 확인이 필요합니다.")
         validate_registration(registration)
-        existing = parse_printers(self._run(["lpstat", "-p"]))
-        if registration.name in {printer.name for printer in existing}:
+        existing = set(self._run(["lpstat", "-e"]).splitlines())
+        if registration.name in existing:
             raise PrinterRegistrationError(
                 "동일한 이름의 프린터가 이미 등록되어 있습니다. 기존 설정을 덮어쓰지 않습니다."
             )
