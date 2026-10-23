@@ -451,6 +451,7 @@ class MainWindow(QMainWindow):
         self.queue_generation += 1
         generation = self.queue_generation
         if not printer:
+            self.state_text.clear()
             self.current_jobs = []
             self.completed_jobs = []
             self.job_list.clear()
