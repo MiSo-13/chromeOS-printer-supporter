@@ -37,6 +37,7 @@ from .settings import SettingsStore
 from .theme import stylesheet_for
 from .setup_ui import PrinterSetupWidget
 from .dependencies import CUPS, LIBREOFFICE, DependencyManager
+from .dialogs import confirm_action
 
 
 class Signals(QObject):
@@ -104,6 +105,7 @@ class MainWindow(QMainWindow):
         self.option_generation = 0
         self.option_printer = ""
         self.option_keys: dict[str, str] = {}
+        self._dependency_install_busy = False
         QApplication.instance().installEventFilter(self)
         self.setAcceptDrops(True)
         self.setWindowTitle("ChromeOS Printer Supporter")
@@ -439,10 +441,10 @@ class MainWindow(QMainWindow):
         for position, button in enumerate(self.navigation):
             button.setChecked(position == index)
 
-    def _background(self, operation, completed):
+    def _background(self, operation, completed, failed=None):
         task = Task(operation)
         task.signals.finished.connect(completed)
-        task.signals.failed.connect(self.show_error)
+        task.signals.failed.connect(failed or self.show_error)
         self.pool.start(task)
 
     def check_dependencies(self, *, required_only: bool = False):
@@ -454,29 +456,46 @@ class MainWindow(QMainWindow):
         self._offer_install(missing)
 
     def _offer_install(self, missing):
+        if self._dependency_install_busy or not missing:
+            return
         names = ", ".join(dep.name for dep in missing)
         command = " ".join(self.dependency_manager.installation_command(missing))
-        description = "\n".join(f"• {dep.name}: {dep.description}" for dep in missing)
-        answer = QMessageBox.question(
-            self,
-            "필요한 패키지 설치",
-            f"설치되지 않은 패키지:\n{description}\n\n"
-            f"실행 명령:\n{command}\n\n"
-            "Linux 컨테이너에만 설치됩니다. sudo 권한과 네트워크가 필요합니다.\n"
-            "설치를 진행할까요?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+        description = "\n".join(
+            f"  - {dep.name}: {', '.join(dep.packages)}\n    {dep.description}"
+            for dep in missing
         )
-        if answer != QMessageBox.StandardButton.Yes:
-            self.status.setText(f"설치 보류: {names}")
+        if not confirm_action(
+            self, title="패키지 설치 확인",
+            summary=f"필요한 패키지 {len(missing)}개를 설치할까요?",
+            details=(
+                f"설치 대상:\n{description}\n\n"
+                f"실행 명령:\n{command}\n\n"
+                "설치 위치: Crostini Linux 컨테이너\n"
+                "영향: 시스템 패키지 및 의존성이 설치됩니다.\n"
+                "sudo 권한과 네트워크 연결이 필요합니다.\n"
+                "프린터 등록이나 실제 인쇄는 하지 않습니다."
+            ),
+            confirm_label="설치",
+        ):
+            self.status.setText(f"설치 취소: {names}")
             return
-        self.status.setText(f"설치 중: {names} (잠시 기다려 주세요)")
-        self._background(
-            lambda: self.dependency_manager.install(missing, approved=True),
-            self._installation_finished,
-        )
+        self._dependency_install_busy = True
+        self.status.setText(f"패키지 설치 중: {names}")
+        try:
+            self._background(
+                lambda: self.dependency_manager.install(missing, approved=True),
+                self._installation_finished,
+                self._installation_failed,
+            )
+        except Exception as exc:
+            self._installation_failed(str(exc))
+
+    def _installation_failed(self, message: str):
+        self._dependency_install_busy = False
+        self.show_error("패키지 설치 실패: " + message)
 
     def _installation_finished(self, message: str):
+        self._dependency_install_busy = False
         QMessageBox.information(self, "패키지 설치 완료", message)
         self.status.setText(message)
         self.refresh_all()
