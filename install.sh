@@ -16,7 +16,7 @@ if ! command -v apt-get >/dev/null 2>&1; then
 fi
 
 missing=()
-if ! python3 -m venv --help >/dev/null 2>&1; then
+if ! dpkg-query -W -f='${Status}' python3-venv 2>/dev/null | grep -q "install ok installed"; then
   missing+=(python3-venv)
 fi
 if ! command -v lpstat >/dev/null 2>&1 || ! command -v lp >/dev/null 2>&1; then
