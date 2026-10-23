@@ -42,6 +42,7 @@ def safe_model_id(value: str) -> bool:
         _MODEL_ID.fullmatch(value)
         and value.casefold() not in {"everywhere", "raw"}
         and not value.startswith("-")
+        and "\\" not in value
     )
 
 
