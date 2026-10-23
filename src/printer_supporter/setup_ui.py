@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import shlex
 
-from PyQt6.QtCore import QObject, QRunnable, QThreadPool, Qt, QUrl, pyqtSignal
+from PyQt6.QtCore import QThreadPool, Qt, QUrl
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
@@ -25,31 +25,7 @@ from .driver_installation import (
 )
 
 
-class WorkerSignals(QObject):
-    finished = pyqtSignal(object)
-    failed = pyqtSignal(str)
-
-
-class Worker(QRunnable):
-    def __init__(self, callback):
-        super().__init__()
-        self.callback = callback
-        self.signals = WorkerSignals()
-
-    def run(self):
-        try:
-            result = self.callback()
-        except Exception as exc:
-            # 창이 닫힌 뒤 Qt 수신 객체가 먼저 정리될 수 있습니다.
-            try:
-                self.signals.failed.emit(str(exc))
-            except RuntimeError:
-                pass
-        else:
-            try:
-                self.signals.finished.emit(result)
-            except RuntimeError:
-                pass
+from .tasks import BackgroundTask as Worker, TaskSignals as WorkerSignals
 
 
 class PrinterSetupWidget(QWidget):
