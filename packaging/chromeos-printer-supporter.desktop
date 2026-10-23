@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ChromeOS Printer Supporter
+Name[ko]=ChromeOS 프린터 지원
+Comment=Print documents using CUPS in ChromeOS Linux
+Comment[ko]=ChromeOS Linux에서 문서 인쇄 및 프린터 관리
+Exec=/usr/bin/chromeos-printer-supporter
+TryExec=/usr/bin/chromeos-printer-supporter
+Icon=chromeos-printer-supporter
+Terminal=false
+Categories=Office;Utility;
+StartupNotify=true
+StartupWMClass=chromeos-printer-supporter

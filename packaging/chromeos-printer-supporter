@@ -1,0 +1,3 @@
+#!/bin/sh
+# Linux 앱 런처와 터미널이 동일한 설치된 실행 파일을 사용합니다.
+exec /opt/chromeos-printer-supporter/chromeos-printer-supporter "$@"

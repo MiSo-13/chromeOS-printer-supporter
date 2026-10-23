@@ -19,7 +19,7 @@ except QtPlatformError as exc:
 print(f"QT_PLATFORM_SELECTED platform={QT_PLATFORM}", file=sys.stderr)
 
 from PyQt6.QtCore import QThreadPool, QTimer, Qt, QEvent
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QHBoxLayout, QLabel, QListWidgetItem,
     QMainWindow, QMessageBox, QPushButton, QSpinBox, QTextEdit, QPlainTextEdit,
@@ -735,6 +735,8 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
+    app.setDesktopFileName("chromeos-printer-supporter")
+    app.setWindowIcon(QIcon.fromTheme("chromeos-printer-supporter"))
     window = MainWindow()
     window.show()
     exit_code = app.exec()
