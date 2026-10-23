@@ -28,7 +28,7 @@ FEATURE_KEYS = {
     "resolution": ("printer-resolution", "Resolution", "SetResolution"),
 }
 
-VALID_TOKEN = re.compile(r"^[A-Za-z0-9_.+-]+$")
+VALID_TOKEN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.+-]*$")
 VALID_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 
 
