@@ -96,6 +96,7 @@ class MainWindow(QMainWindow):
         self.dependency_manager = dependency_manager or DependencyManager()
         self.pool = QThreadPool.globalInstance()
         self.selected_file: Path | None = None
+        self._dependency_install_busy = False
         self._preview_generation = 0
         self._preview_pdf_path: Path | None = None
         self._office_preview: ConvertedOfficePreview | None = None
@@ -105,7 +106,6 @@ class MainWindow(QMainWindow):
         self.option_generation = 0
         self.option_printer = ""
         self.option_keys: dict[str, str] = {}
-        self._dependency_install_busy = False
         QApplication.instance().installEventFilter(self)
         self.setAcceptDrops(True)
         self.setWindowTitle("ChromeOS Printer Supporter")
