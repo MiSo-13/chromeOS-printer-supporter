@@ -38,7 +38,7 @@ def test_chromeos_uri_list_clipboard(tmp_path):
     document = tmp_path / "테스트 문서.pdf"
     document.write_bytes(b"dummy")
     mime = QMimeData()
-    mime.setData("text/uri-list", (document.as_uri() + "\\r\\n").encode())
+    mime.setData("text/uri-list", (document.as_uri() + "\r\n").encode())
     assert local_document_from_mime(mime) == document
 
 
@@ -49,5 +49,5 @@ def test_gnome_copied_files_clipboard(tmp_path):
     document = tmp_path / "sample.pdf"
     document.write_bytes(b"dummy")
     mime = QMimeData()
-    mime.setData("x-special/gnome-copied-files", ("copy\\n" + document.as_uri()).encode())
+    mime.setData("x-special/gnome-copied-files", ("copy\n" + document.as_uri()).encode())
     assert local_document_from_mime(mime) == document
