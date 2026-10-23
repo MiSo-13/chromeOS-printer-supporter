@@ -3,8 +3,20 @@
 from __future__ import annotations
 
 from pathlib import Path
+import faulthandler
 import getpass
 import sys
+
+from .qt_platform import QtPlatformError, configure_qt_platform
+
+# Qt 플랫폼은 반드시 PyQt6 및 QtGui/QtWidgets import 전에 선택합니다.
+faulthandler.enable()
+try:
+    QT_PLATFORM = configure_qt_platform()
+except QtPlatformError as exc:
+    print(f"QT_PLATFORM_ERROR {exc}", file=sys.stderr)
+    raise SystemExit(2) from exc
+print(f"QT_PLATFORM_SELECTED platform={QT_PLATFORM}", file=sys.stderr)
 
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -420,7 +432,9 @@ def main():
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
-    sys.exit(app.exec())
+    exit_code = app.exec()
+    print(f"APP_EXIT code={exit_code}", file=sys.stderr)
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

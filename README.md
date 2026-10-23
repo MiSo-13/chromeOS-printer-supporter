@@ -38,6 +38,23 @@ Word/Excel/PowerPoint 파일 인쇄 시 LibreOffice가 없다면 그때 설치 �
 sudo 권한이 필요합니다. 권한이 없다면 오류를 표시하며 터미널에서 직접 설치할 수 있습니다.
 설치는 **Linux 컨테이너에만** 적용되고 회사 공용 프린터의 하드웨어 설정을 변경하지 않습니다.
 
+### Crostini의 Wayland 연결 오류 대응
+
+WorKing, PDF Helper, Postman Tester에서 사용한 안정화 방식을 적용했습니다.
+
+- ChromeOS Crostini가 감지되고 X11 DISPLAY가 있으면 **PyQt6 로딩 전에** Qt 플랫폼을 `xcb`로 선택합니다.
+- Windows, macOS, 일반 Linux와 사용자가 명시한 `QT_QPA_PLATFORM` 설정은 그대로 유지합니다.
+- `libqxcb.so` 의존성이 부족하면 Qt 초기화 전에 누락된 라이브러리 및 Debian 설치 명령을 터미널에 표시합니다. 승인 없는 자동 설치는 하지 않습니다.
+- 실행 시 터미널에 `QT_PLATFORM_SELECTED platform=xcb`, 정상 종료 시 `APP_EXIT code=0`을 출력합니다. 비정상 네이티브 종료는 Python `faulthandler`가 진단에 도움을 줄 수 있습니다.
+
+터미널에서 인쇄 작업 없이 화면 실행만 검증할 수 있습니다.
+
+```bash
+.venv/bin/chromeos-printer-supporter
+```
+
+X11 동작 확인 후에도 오류가 지속되면 로그를 복사해 주세요. 디스플레이 설정만 변경하며 CUPS 프린터 설정이나 인쇄 작업은 건드리지 않습니다.
+
 ### 수동 설치
 
 먼저 프린터가 CUPS에 등록되어 실제 출력되는지 확인합니다.
