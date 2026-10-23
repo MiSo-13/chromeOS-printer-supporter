@@ -82,7 +82,7 @@ def test_queue_tab_object_names_are_set_in_main_ui():
     from pathlib import Path
     code = (
         Path(__file__).resolve().parents[1]
-        / "src" / "printer_supporter" / "main.py"
+        / "src" / "printer_supporter" / "ui_pages.py"
     ).read_text(encoding="utf-8")
     assert 'queue_tabs.setObjectName("queueTabs")' in code
     assert 'queue_tabs.tabBar().setObjectName("queueTabBar")' in code

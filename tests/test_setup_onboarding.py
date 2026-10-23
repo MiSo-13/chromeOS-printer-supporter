@@ -72,7 +72,9 @@ def test_setup_steps_search_notice_and_registration_consent():
         )
         widget.queue_name.setText("Test_Printer")
         widget.driver.setCurrentIndex(widget.driver.findData("everywhere"))
-        widget._background = lambda op, done: calls.append(("pending", op, done))
+        widget._background = lambda op, done, failed=None: calls.append(
+            ("pending", op, done)
+        )
         sm.confirm_action = lambda *args, **kwargs: approvals.append(kwargs) or False
         widget.register()
         assert not any(isinstance(c, tuple) for c in calls)

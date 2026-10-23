@@ -36,7 +36,7 @@ if [[ ! -d .venv ]]; then
   python3 -m venv .venv
 fi
 
-echo "PyQt6 및 PrintHub 패키지를 Python 가상환경에 설치합니다."
+echo "ChromeOS Printer Supporter를 Python 가상환경에 설치합니다."
 read -r -p "pip 설치를 진행할까요? [y/N] " answer
 case "$answer" in
   y|Y|yes|YES) .venv/bin/python -m pip install -e . ;;

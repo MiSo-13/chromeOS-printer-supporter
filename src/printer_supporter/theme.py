@@ -1,6 +1,13 @@
 """ChromeOS Printer Supporter 데스크톱 UI 공통 스타일."""
 
 APP_STYLESHEET = """
+QMenuBar { background: #eef3f9; color: #203950; border-bottom: 1px solid #cad6e2; padding: 3px 6px; }
+QMenuBar::item { background: transparent; padding: 6px 13px; border-radius: 4px; }
+QMenuBar::item:selected { background: #d6e8fb; color: #174f87; }
+QMenu { background: #ffffff; color: #243a51; border: 1px solid #bfccda; padding: 4px; }
+QMenu::item { padding: 7px 20px; }
+QMenu::item:selected { background: #d6e8fb; color: #174f87; }
+
 QWidget#documentPreview, QScrollArea#previewScroll { background: #edf1f5; border: none; border-radius: 6px; }
 QLabel#previewPlaceholder { background: #edf1f5; color: #56677a; padding: 16px; border-radius: 6px; }
 QLabel#previewImage { background: #ffffff; }
@@ -14,8 +21,6 @@ QTabBar#queueTabBar::tab:selected { background: #d9e9ff; color: #124f91; border-
 QTabBar#queueTabBar::tab:hover:!selected { background: #f0f5fb; color: #174c85; border-color: #7da9d9; }
 QTabBar#queueTabBar::tab:focus { border-color: #1673d1; }
 
-QGroupBox#sidebarSettings { background: #edf3fa; border: 1px solid #c4d1e0; border-radius: 7px; margin-top: 13px; padding: 9px 8px 10px; }
-QGroupBox#sidebarSettings::title { color: #234e7a; font-weight: 700; }
 QLabel#printFeedback { color: #435c76; font-size: 12px; padding: 6px 2px; }
 QProgressBar#printProgress { border: 1px solid #b8cbe0; border-radius: 4px; min-height: 8px; background: #e1eaf5; }
 QProgressBar#printProgress::chunk { background: #2878c7; }
@@ -74,6 +79,13 @@ QPushButton#approveActionButton { background: #225e9e; color: #ffffff; font-weig
 
 
 DARK_STYLESHEET = """
+QMenuBar { background: #202832; color: #edf4fb; border-bottom: 1px solid #4b5b6b; padding: 3px 6px; }
+QMenuBar::item { background: transparent; padding: 6px 13px; border-radius: 4px; }
+QMenuBar::item:selected { background: #385775; color: #ffffff; }
+QMenu { background: #27333f; color: #eef5ff; border: 1px solid #506378; padding: 4px; }
+QMenu::item { padding: 7px 20px; }
+QMenu::item:selected { background: #385775; color: #ffffff; }
+
 QWidget#documentPreview, QScrollArea#previewScroll { background: #303843; border: none; border-radius: 6px; }
 QLabel#previewPlaceholder { background: #303843; color: #c0cad5; padding: 16px; border-radius: 6px; }
 QLabel#previewImage { background: #ffffff; }
@@ -87,8 +99,6 @@ QTabBar#queueTabBar::tab:selected { background: #244e79; color: #ffffff; border-
 QTabBar#queueTabBar::tab:hover:!selected { background: #405367; color: #ffffff; border-color: #86b5e3; }
 QTabBar#queueTabBar::tab:focus { border-color: #9cd4ff; }
 
-QGroupBox#sidebarSettings { background: #26384c; border: 1px solid #4f6881; border-radius: 7px; margin-top: 13px; padding: 9px 8px 10px; }
-QGroupBox#sidebarSettings::title { color: #b5dbff; font-weight: 700; }
 QLabel#printFeedback { color: #bcd3e7; font-size: 12px; padding: 6px 2px; }
 QProgressBar#printProgress { border: 1px solid #5b7693; border-radius: 4px; min-height: 8px; background: #223449; }
 QProgressBar#printProgress::chunk { background: #78b8f4; }

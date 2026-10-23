@@ -106,18 +106,19 @@ def test_print_buttons_busy_state_and_retry(tmp_path):
     assert result.returncode == 0, result.stdout + "\n" + result.stderr
 
 
-def test_settings_above_navigation_and_theme_styles():
+def test_menu_styles_and_no_sidebar_settings():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
     main = (root / "src" / "printer_supporter" / "main.py").read_text()
-    assert main.index('settings_group = QGroupBox("설정")') < main.index(
-        'add_page(print_page, "문서 인쇄")'
-    )
-    assert main.count('self.theme_box = QComboBox()') == 1
-    assert 'side_layout.addWidget(settings_group)' in main
-    assert 'side_layout.addStretch()' in main
+    menus = (root / "src" / "printer_supporter" / "app_menu.py").read_text()
+    assert "build_menus(" in main
+    assert 'settings_group = QGroupBox("설정")' not in main
+    assert 'self.theme_box = QComboBox()' not in main
+    assert 'bar.addMenu("파일")' in menus
+    assert 'bar.addMenu("설정")' in menus
     for theme in ("light", "dark"):
         styles = stylesheet_for(theme)
-        assert "QGroupBox#sidebarSettings" in styles
+        assert "QMenuBar::item:selected" in styles
+        assert "QMenu::item:selected" in styles
         assert "QProgressBar#printProgress" in styles
         assert "QLabel#printFeedback" in styles

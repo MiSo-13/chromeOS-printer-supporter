@@ -18,12 +18,12 @@ except QtPlatformError as exc:
     raise SystemExit(2) from exc
 print(f"QT_PLATFORM_SELECTED platform={QT_PLATFORM}", file=sys.stderr)
 
-from PyQt6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, QEvent, pyqtSignal
+from PyQt6.QtCore import QThreadPool, QTimer, Qt, QEvent
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
-    QApplication, QComboBox, QFileDialog, QHBoxLayout, QLabel,
-    QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
-    QSpinBox, QTabWidget, QTextEdit, QPlainTextEdit, QVBoxLayout, QWidget, QLineEdit, QGroupBox, QStackedWidget, QFrame, QProgressBar,
+    QApplication, QComboBox, QFileDialog, QHBoxLayout, QLabel, QListWidgetItem,
+    QMainWindow, QMessageBox, QPushButton, QSpinBox, QTextEdit, QPlainTextEdit,
+    QVBoxLayout, QWidget, QLineEdit, QStackedWidget, QFrame,
 )
 
 from .backend import CupsService, PrintError, PrintJob, SUPPORTED_EXTENSIONS, OFFICE_EXTENSIONS
@@ -31,62 +31,16 @@ from .capabilities import feature_options
 from .diagnostics import diagnose_printer
 from .document_input import local_document_from_mime, supported_document
 from .preview import normalize_page_ranges, pdf_page_count, render_pdf_page, read_text_preview
-from .preview_widget import DocumentPreview, read_image
+from .preview_widget import read_image
 from .office_preview import ConvertedOfficePreview, convert_office_preview
 from .settings import SettingsStore
 from .theme import stylesheet_for
-from .setup_ui import PrinterSetupWidget
+from .ui_pages import build_workspace_pages
+from .tasks import BackgroundTask as Task, TaskSignals as Signals
+from .document_drop import DocumentDropArea
+from .app_menu import build_menus
 from .dependencies import CUPS, LIBREOFFICE, DependencyManager
 from .dialogs import confirm_action
-
-
-class Signals(QObject):
-    finished = pyqtSignal(object)
-    failed = pyqtSignal(str)
-
-
-class Task(QRunnable):
-    def __init__(self, operation):
-        super().__init__()
-        self.operation = operation
-        self.signals = Signals()
-
-    def run(self):
-        try:
-            self.signals.finished.emit(self.operation())
-        except Exception as exc:
-            self.signals.failed.emit(str(exc))
-
-
-class DocumentDropArea(QFrame):
-    """문서 미리보기 영역으로 들어온 파일 드롭을 처리합니다."""
-
-    fileDropped = pyqtSignal(object)
-
-    def __init__(self):
-        super().__init__()
-        self.setAcceptDrops(True)
-        self.setObjectName("documentDropArea")
-
-    def dragEnterEvent(self, event):
-        if local_document_from_mime(event.mimeData()):
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-
-    def dragMoveEvent(self, event):
-        if local_document_from_mime(event.mimeData()):
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-
-    def dropEvent(self, event):
-        path = local_document_from_mime(event.mimeData())
-        if path:
-            event.acceptProposedAction()
-            QTimer.singleShot(0, lambda selected=path: self.fileDropped.emit(selected))
-        else:
-            event.ignore()
 
 
 class MainWindow(QMainWindow):
@@ -114,6 +68,12 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(960, 680)
         self.settings = SettingsStore()
         self.setStyleSheet(stylesheet_for(self.settings.data["theme"]))
+        self._theme_actions = build_menus(
+            self, theme=self.settings.data["theme"],
+            open_file=self.choose_file,
+            refresh=self.refresh_all,
+            change_theme=self._change_theme,
+        )
 
         root = QWidget()
         layout = QVBoxLayout(root)
@@ -161,212 +121,10 @@ class MainWindow(QMainWindow):
             button.clicked.connect(lambda checked=False, i=index: self._switch_page(i))
             side_layout.addWidget(button)
             self.navigation.append(button)
-        settings_group = QGroupBox("설정")
-        settings_group.setObjectName("sidebarSettings")
-        settings_layout = QVBoxLayout(settings_group)
-        settings_layout.setSpacing(6)
-        self.theme_box = QComboBox()
-        self.theme_box.setObjectName("themeSelector")
-        self.theme_box.setAccessibleName("화면 테마")
-        self.theme_box.addItem("라이트", "light")
-        self.theme_box.addItem("다크", "dark")
-        self.theme_box.setCurrentIndex(1 if self.settings.data["theme"] == "dark" else 0)
-        self.theme_box.currentIndexChanged.connect(self._change_theme)
-        settings_layout.addWidget(self.theme_box)
-        side_layout.addWidget(settings_group)
         workspace.addWidget(sidebar)
         workspace.addWidget(tabs, 1)
 
-        print_page = QWidget()
-        print_layout = QHBoxLayout(print_page)
-        print_layout.setSpacing(20)
-        print_layout.setContentsMargins(4, 6, 4, 6)
-        document_panel = DocumentDropArea()
-        document_panel.fileDropped.connect(self._set_document)
-        document_layout = QVBoxLayout(document_panel)
-        document_layout.setSpacing(12)
-        settings_panel = QFrame()
-        settings_panel.setObjectName("settingsPanel")
-        settings_panel.setFixedWidth(330)
-        settings_layout = QVBoxLayout(settings_panel)
-        settings_layout.setContentsMargins(16, 22, 16, 18)
-        settings_layout.setSpacing(16)
-        print_layout.addWidget(document_panel, 1)
-        print_layout.addWidget(settings_panel)
-        file_row = QHBoxLayout()
-        self.file_label = QLabel("선택한 문서 없음")
-        file_row.addWidget(self.file_label, 1)
-        choose = QPushButton("문서 선택")
-        choose.clicked.connect(self.choose_file)
-        file_row.addWidget(choose)
-        document_layout.addLayout(file_row)
-        document_layout.addWidget(QLabel("PDF · Office · 이미지 · 텍스트"))
-        drop_hint = QLabel("파일을 이 영역에 끌어놓거나 Ctrl+V로 파일/경로 붙여넣기")
-        drop_hint.setObjectName("dropHint")
-        drop_hint.setWordWrap(True)
-        document_layout.addWidget(drop_hint)
-        preview_group = QGroupBox("문서 미리보기")
-        preview_layout = QVBoxLayout(preview_group)
-        preview_layout.setSpacing(12)
-        self.preview_view = DocumentPreview()
-        self.preview_view.setMinimumHeight(280)
-        preview_layout.addWidget(self.preview_view, 1)
-
-        navigation = QHBoxLayout()
-        navigation.setSpacing(8)
-        self.prev_page = QPushButton("이전")
-        self.prev_page.clicked.connect(lambda: self._show_preview_page(self.preview_index - 1))
-        self.next_page = QPushButton("다음")
-        self.next_page.clicked.connect(lambda: self._show_preview_page(self.preview_index + 1))
-        self.page_indicator = QLabel("—")
-        self.page_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.page_indicator.setMinimumWidth(52)
-        navigation.addWidget(self.prev_page)
-        navigation.addWidget(self.page_indicator)
-        navigation.addWidget(self.next_page)
-        navigation.addStretch()
-        self.zoom_box = QComboBox()
-        self.zoom_box.setAccessibleName("미리보기 확대/축소")
-        self.zoom_box.addItem("화면 맞춤", "fit")
-        for label, value in (("75%", 0.75), ("100%", 1.0), ("125%", 1.25),
-                             ("150%", 1.5), ("200%", 2.0)):
-            self.zoom_box.addItem(label, value)
-        self.zoom_box.currentIndexChanged.connect(self._change_preview_zoom)
-        navigation.addWidget(self.zoom_box)
-        preview_layout.addLayout(navigation)
-        self.preview_retry_button = QPushButton("미리보기 다시 시도")
-        self.preview_retry_button.setVisible(False)
-        self.preview_retry_button.clicked.connect(self._load_preview)
-        preview_layout.addWidget(self.preview_retry_button)
-        document_layout.addWidget(preview_group, 1)
-        self.preview_index = 0
-        self.preview_count = 0
-        self._set_preview_navigation(False)
-        range_row = QHBoxLayout()
-        range_row.setSpacing(12)
-        range_row.addWidget(QLabel("페이지"))
-        self.page_range = QLineEdit()
-        self.page_range.setPlaceholderText("전체 페이지 (예: 1-3, 5)")
-        range_row.addWidget(self.page_range, 1)
-        settings_layout.addLayout(range_row)
-        options = QHBoxLayout()
-        options.setSpacing(12)
-        options.addWidget(QLabel("인쇄 매수"))
-        self.copies = QSpinBox()
-        self.copies.setRange(1, 99)
-        options.addWidget(self.copies)
-        options.addStretch()
-        settings_layout.addLayout(options)
-
-        # 지원하지 않거나 알려지지 않은 옵션은 프린터 기본값을 사용합니다.
-        from PyQt6.QtWidgets import QFormLayout
-        option_form = QFormLayout()
-        option_form.setHorizontalSpacing(16)
-        option_form.setVerticalSpacing(12)
-        self.paper = QComboBox()
-        self.color_mode = QComboBox()
-        self.duplex_mode = QComboBox()
-        self.quality_mode = QComboBox()
-        self.resolution_mode = QComboBox()
-        self.option_controls = {
-            "paper": self.paper,
-            "color": self.color_mode,
-            "duplex": self.duplex_mode,
-            "quality": self.quality_mode,
-            "resolution": self.resolution_mode,
-        }
-        option_labels = {
-            "paper": "용지", "color": "흑백 / 컬러", "duplex": "단면 / 양면",
-            "quality": "인쇄 품질", "resolution": "해상도",
-        }
-        for feature, control in self.option_controls.items():
-            control.addItem("프린터 기본값", None)
-            control.setEnabled(False)
-            option_form.addRow(option_labels[feature], control)
-        settings_layout.addLayout(option_form)
-        self.option_info = QLabel("프린터 옵션을 확인 중입니다…")
-        settings_layout.addWidget(self.option_info)
-        print_actions = QHBoxLayout()
-        print_actions.setSpacing(12)
-        self.print_button = QPushButton("인쇄")
-        self.print_button.setObjectName("primaryButton")
-        self.print_button.clicked.connect(self.print_selected)
-        print_actions.addWidget(self.print_button)
-        self.test_page_button = QPushButton("테스트 페이지 인쇄")
-        self.test_page_button.clicked.connect(self.print_test_page)
-        print_actions.addWidget(self.test_page_button)
-        settings_layout.addLayout(print_actions)
-        self.print_progress = QProgressBar()
-        self.print_progress.setObjectName("printProgress")
-        self.print_progress.setRange(0, 0)
-        self.print_progress.setTextVisible(False)
-        self.print_progress.setVisible(False)
-        settings_layout.addWidget(self.print_progress)
-        self.print_feedback = QLabel("문서와 프린터를 선택한 뒤 인쇄해 주세요.")
-        self.print_feedback.setObjectName("printFeedback")
-        self.print_feedback.setWordWrap(True)
-        settings_layout.addWidget(self.print_feedback)
-
-        settings_layout.addStretch()
-        add_page(print_page, "문서 인쇄")
-
-        queue_page = QWidget()
-        queue_layout = QVBoxLayout(queue_page)
-        queue_tabs = QTabWidget()
-        queue_tabs.setObjectName("queueTabs")
-        queue_tabs.tabBar().setObjectName("queueTabBar")
-        queue_tabs.tabBar().setDocumentMode(False)
-        queue_tabs.tabBar().setExpanding(False)
-        queue_tabs.setAccessibleName("인쇄 대기열 작업 종류")
-        queue_layout.addWidget(queue_tabs)
-        active_page = QWidget()
-        active_layout = QVBoxLayout(active_page)
-        active_layout.addWidget(QLabel("대기 중이거나 인쇄 중인 작업"))
-        self.job_list = QListWidget()
-        self.job_list.currentItemChanged.connect(self._update_queue_actions)
-        active_layout.addWidget(self.job_list)
-        actions = QHBoxLayout()
-        actions.setSpacing(12)
-        self.hold_button = QPushButton("내 작업 보류")
-        self.hold_button.clicked.connect(lambda: self.change_selected_job("hold"))
-        actions.addWidget(self.hold_button)
-        self.resume_button = QPushButton("내 작업 재개")
-        self.resume_button.clicked.connect(lambda: self.change_selected_job("resume"))
-        actions.addWidget(self.resume_button)
-        self.cancel_button = QPushButton("내 작업 취소")
-        self.cancel_button.clicked.connect(self.cancel_selected)
-        actions.addWidget(self.cancel_button)
-        active_layout.addLayout(actions)
-        queue_tabs.addTab(active_page, "진행 중인 작업")
-        history_page = QWidget()
-        history_layout = QVBoxLayout(history_page)
-        history_layout.addWidget(QLabel("최근 처리된 작업"))
-        self.history_list = QListWidget()
-        history_layout.addWidget(self.history_list)
-        queue_tabs.addTab(history_page, "처리 종료 이력")
-        self.queue_info = QLabel("목록 갱신 중…")
-        queue_layout.addWidget(self.queue_info)
-        
-        add_page(queue_page, "인쇄 대기열")
-        self._update_queue_actions()
-
-        state_page = QWidget()
-        state_layout = QVBoxLayout(state_page)
-        self.diagnosis_label = QLabel("프린터를 선택하면 상태를 확인합니다.")
-        self.diagnosis_label.setObjectName("diagnosisSummary")
-        self.diagnosis_label.setWordWrap(True)
-        state_layout.addWidget(self.diagnosis_label)
-        self.diagnosis_advice = QLabel("")
-        self.diagnosis_advice.setWordWrap(True)
-        state_layout.addWidget(self.diagnosis_advice)
-        state_layout.addWidget(QLabel("CUPS 상세 정보"))
-        self.state_text = QTextEdit()
-        self.state_text.setReadOnly(True)
-        state_layout.addWidget(self.state_text)
-        
-        add_page(state_page, "프린터 상태")
-
-        add_page(PrinterSetupWidget(on_registered=self.refresh_all), "프린터 추가")
+        build_workspace_pages(self, add_page)
         side_layout.addStretch()
         self._switch_page(0)
         footer = QHBoxLayout()
@@ -437,11 +195,15 @@ class MainWindow(QMainWindow):
         else:
             super().dropEvent(event)
 
-    def _change_theme(self, index: int):
-        theme = self.theme_box.itemData(index)
+    def _change_theme(self, theme: str):
+        """메뉴에서 선택한 테마를 저장하고 창 전체에 적용합니다."""
+        previous = self.settings.data["theme"]
+        if theme == previous:
+            return
         try:
             self.settings.set_theme(theme)
         except OSError as exc:
+            self._theme_actions[previous].setChecked(True)
             self.show_error(f"테마 설정 저장 실패: {exc}")
             return
         self.setStyleSheet(stylesheet_for(theme))
@@ -528,8 +290,6 @@ class MainWindow(QMainWindow):
         self.printer_box.addItems([p.name for p in printers])
         if previous in [p.name for p in printers]:
             self.printer_box.setCurrentText(previous)
-        elif "Samsung_SL_M2030W" in [p.name for p in printers]:
-            self.printer_box.setCurrentText("Samsung_SL_M2030W")
         self.printer_box.blockSignals(False)
         selected = next((p for p in printers if p.name == self.printer_box.currentText()), None)
         self.selected_printer_status = selected

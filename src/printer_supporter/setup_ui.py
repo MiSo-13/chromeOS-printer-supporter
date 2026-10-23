@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import shlex
 
-from PyQt6.QtCore import QObject, QRunnable, QThreadPool, Qt, QUrl, pyqtSignal
+from PyQt6.QtCore import QThreadPool, Qt, QUrl
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
@@ -25,31 +25,7 @@ from .driver_installation import (
 )
 
 
-class WorkerSignals(QObject):
-    finished = pyqtSignal(object)
-    failed = pyqtSignal(str)
-
-
-class Worker(QRunnable):
-    def __init__(self, callback):
-        super().__init__()
-        self.callback = callback
-        self.signals = WorkerSignals()
-
-    def run(self):
-        try:
-            result = self.callback()
-        except Exception as exc:
-            # 창이 닫힌 뒤 Qt 수신 객체가 먼저 정리될 수 있습니다.
-            try:
-                self.signals.failed.emit(str(exc))
-            except RuntimeError:
-                pass
-        else:
-            try:
-                self.signals.finished.emit(result)
-            except RuntimeError:
-                pass
+from .tasks import BackgroundTask as Worker, TaskSignals as WorkerSignals
 
 
 class PrinterSetupWidget(QWidget):
@@ -279,39 +255,29 @@ class PrinterSetupWidget(QWidget):
             self, title="프린터 연결 방법",
             summary="4단계로 프린터를 등록할 수 있습니다.",
             details=(
-                "1. 프린터 찾기\n"
-                "  · '프린터 검색'을 눌러 같은 네트워크의 프린터를 찾습니다.\n"
-                "  · 검색되지 않으면 프린터 IP 주소를 입력하고 'IP 주소 적용'을 누릅니다.\n\n"
-                "2. 모델 확인\n"
-                "  · 프린터를 선택하면 모델과 연결 방식을 확인합니다.\n"
-                "  · IPP 정보가 없으면 이름이 추정치일 수 있습니다.\n\n"
-                "3. 드라이버 선택\n"
-                "  · 추천된 IPP Everywhere 또는 설치된 CUPS 모델을 확인합니다.\n"
-                "  · 필요하면 제조사의 PPD 파일을 직접 선택합니다.\n"
-                "  · 드라이버 패키지가 필요한 경우 설치 전에 명령과 영향 범위를 표시합니다.\n\n"
-                "4. 등록\n"
-                "  · 프린터 이름을 확인하고 '이 프린터 등록'을 누릅니다.\n"
-                "  · 등록 명령을 확인하고 직접 승인해야 CUPS에 등록됩니다.\n\n"
-                "참고: 검색과 모델 확인은 설정을 변경하거나 인쇄하지 않습니다.\n"
-                "지원 모델: README / docs/SUPPORTED_PRINTERS.md"
+                "1. 프린터 찾기: 검색하거나 IP 주소를 입력합니다.\n"
+                "2. 모델 확인: 검색된 프린터를 선택합니다.\n"
+                "3. 드라이버 선택: 추천 항목 또는 PPD 파일을 선택합니다.\n"
+                "4. 등록: 이름을 확인하고 '이 프린터 등록'을 누릅니다.\n\n"
+                "패키지 설치와 프린터 등록은 작업 내용을 확인한 뒤 승인합니다."
             ),
         )
 
-    def _background(self, operation, callback):
+    def _background(self, operation, callback, failed=None):
         worker = Worker(operation)
         worker.signals.finished.connect(callback)
-        worker.signals.failed.connect(self._error)
+        worker.signals.failed.connect(failed or self._error)
         self.pool.start(worker)
 
     def _error(self, message: str):
+        """일반 오류는 현재 검색·등록 작업 상태를 변경하지 않습니다."""
         self.status.setText("오류: " + message)
-        self._scan_busy = False
-        self._register_busy = False
-        self.scan_button.setEnabled(True)
-        self.register_button.setEnabled(
-            self.current_device is not None and not self._register_busy
-        )
         QMessageBox.warning(self, "프린터 설정 오류", message)
+
+    def _registration_failed(self, message: str):
+        self._register_busy = False
+        self.register_button.setEnabled(self.current_device is not None)
+        self._error(message)
 
     def _search_failed(self, message: str):
         self._scan_busy = False
@@ -748,10 +714,14 @@ class PrinterSetupWidget(QWidget):
         self._register_busy = True
         self.register_button.setEnabled(False)
         self.status.setText("CUPS 프린터를 등록 중입니다…")
-        self._background(
-            lambda: self.service.register(registration, approved=True),
-            self._registered,
-        )
+        try:
+            self._background(
+                lambda: self.service.register(registration, approved=True),
+                self._registered,
+                self._registration_failed,
+            )
+        except Exception as exc:
+            self._registration_failed(str(exc))
 
     def _registered(self, result):
         self._register_busy = False
