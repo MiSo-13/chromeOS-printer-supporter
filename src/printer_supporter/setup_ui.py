@@ -18,7 +18,7 @@ from .discovery import (
 from .identification import PrinterIdentity, identify_printer, unknown_identity
 from .driver_recommendation import DriverAdvisor, DriverRecommendation
 from .driver_installation import (
-    DriverInstallPlan, DriverInstallService, official_support_for,
+    DriverInstallPlan, DriverInstallService, official_support_for, package_for_identity,
 )
 
 
@@ -314,16 +314,25 @@ class PrinterSetupWidget(QWidget):
         self.identity_advice.setToolTip(
             "지원 형식: " + (", ".join(identity.document_formats) or "미확인")
         )
-        # 호환성 확인과 설치 안내는 실제 I/O가 없어도 메인 스레드를 막지 않습니다.
-        install_worker = Worker(lambda: (
-            generation, device, self.installer.plan(identity)
-        ))
-        install_worker.signals.finished.connect(self._install_plan_ready)
-        install_worker.signals.failed.connect(
-            lambda message, expected=generation, selected=device:
-                self._install_plan_failed(expected, selected, message)
-        )
-        self.pool.start(install_worker)
+        # 설치 후보가 없는 대부분의 프린터는 공식 URL만 조회하므로
+        # 별도 스레드를 만들지 않고 즉시 안내해 창 종료 시 경쟁을 줄입니다.
+        if package_for_identity(identity) is None:
+            try:
+                self._install_plan_ready(
+                    (generation, device, self.installer.plan(identity))
+                )
+            except Exception as exc:
+                self._install_plan_failed(generation, device, str(exc))
+        else:
+            install_worker = Worker(lambda: (
+                generation, device, self.installer.plan(identity)
+            ))
+            install_worker.signals.finished.connect(self._install_plan_ready)
+            install_worker.signals.failed.connect(
+                lambda message, expected=generation, selected=device:
+                    self._install_plan_failed(expected, selected, message)
+            )
+            self.pool.start(install_worker)
         self.recommendation_summary.setText("설치된 드라이버와 비교 중…")
         worker = Worker(lambda: (
             generation, device, self.advisor.advise(device, identity)
@@ -424,6 +433,9 @@ class PrinterSetupWidget(QWidget):
     def _driver_install_finished(self, generation, device, message):
         self._install_busy = False
         if generation != self.identity_generation or device != self.current_device:
+            self.install_button.setEnabled(
+                bool(self.install_plan and self.install_plan.can_install)
+            )
             return
         self.status.setText(message)
         QMessageBox.information(self, "배포판 드라이버 설치 확인", message)
@@ -432,6 +444,9 @@ class PrinterSetupWidget(QWidget):
     def _driver_install_failed(self, generation, device, message):
         self._install_busy = False
         if generation != self.identity_generation or device != self.current_device:
+            self.install_button.setEnabled(
+                bool(self.install_plan and self.install_plan.can_install)
+            )
             return
         self.install_status_label.setText(
             "드라이버 설치 실패: " + message[:400]
