@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .backend import CupsService, PrintError, PrintJob, SUPPORTED_EXTENSIONS
+from .setup_ui import PrinterSetupWidget
 from .dependencies import CUPS, LIBREOFFICE, DependencyManager
 
 
@@ -116,6 +117,8 @@ class MainWindow(QMainWindow):
         state_layout.addWidget(self.state_text)
         state_layout.addWidget(QLabel("장치 오류는 연결 방식에 따라 일부만 보고될 수 있습니다."))
         tabs.addTab(state_page, "상태 및 오류")
+
+        tabs.addTab(PrinterSetupWidget(on_registered=self.refresh_all), "프린터 추가")
 
         self.timer = QTimer(self)
         self.timer.setInterval(5000)
