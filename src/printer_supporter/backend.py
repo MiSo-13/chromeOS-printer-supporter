@@ -133,7 +133,7 @@ class CupsService:
         """선택한 CUPS 큐에 ASCII 텍스트 테스트 페이지를 한 장 전송합니다."""
         if not printer or printer.startswith("-"):
             raise PrintError("올바른 프린터를 선택해 주세요.")
-        if media is not None and (not isinstance(media, str) or not re.fullmatch(r"[A-Za-z0-9_.+-]+", media)):
+        if media is not None and (not isinstance(media, str) or media not in {"A4", "Letter"}):
             raise PrintError("지원하지 않는 테스트 용지 크기입니다.")
 
         with TemporaryDirectory(prefix="printhub-test-") as temp:
