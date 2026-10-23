@@ -36,9 +36,18 @@ class Worker(QRunnable):
 
     def run(self):
         try:
-            self.signals.finished.emit(self.callback())
+            result = self.callback()
         except Exception as exc:
-            self.signals.failed.emit(str(exc))
+            # 창이 닫힌 뒤 Qt 수신 객체가 먼저 정리될 수 있습니다.
+            try:
+                self.signals.failed.emit(str(exc))
+            except RuntimeError:
+                pass
+        else:
+            try:
+                self.signals.finished.emit(result)
+            except RuntimeError:
+                pass
 
 
 class PrinterSetupWidget(QWidget):

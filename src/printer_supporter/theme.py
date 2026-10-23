@@ -14,6 +14,12 @@ QTabBar#queueTabBar::tab:selected { background: #d9e9ff; color: #124f91; border-
 QTabBar#queueTabBar::tab:hover:!selected { background: #f0f5fb; color: #174c85; border-color: #7da9d9; }
 QTabBar#queueTabBar::tab:focus { border-color: #1673d1; }
 
+QGroupBox#sidebarSettings { background: #edf3fa; border: 1px solid #c4d1e0; border-radius: 7px; margin-top: 13px; padding: 9px 8px 10px; }
+QGroupBox#sidebarSettings::title { color: #234e7a; font-weight: 700; }
+QLabel#printFeedback { color: #435c76; font-size: 12px; padding: 6px 2px; }
+QProgressBar#printProgress { border: 1px solid #b8cbe0; border-radius: 4px; min-height: 8px; background: #e1eaf5; }
+QProgressBar#printProgress::chunk { background: #2878c7; }
+
 QLabel#dropHint { color: #556477; font-size: 12px; padding: 6px 2px; }
 
 QLabel#diagnosisSummary { font-size: 15px; font-weight: 600; padding: 12px; background: #e8f0f9; border-radius: 7px; }
@@ -69,6 +75,12 @@ QTabBar#queueTabBar::tab { background: #313b48; color: #d1ddeb; border: 1px soli
 QTabBar#queueTabBar::tab:selected { background: #244e79; color: #ffffff; border-color: #6ea0d3; border-bottom: 3px solid #8cc9ff; font-weight: 700; }
 QTabBar#queueTabBar::tab:hover:!selected { background: #405367; color: #ffffff; border-color: #86b5e3; }
 QTabBar#queueTabBar::tab:focus { border-color: #9cd4ff; }
+
+QGroupBox#sidebarSettings { background: #26384c; border: 1px solid #4f6881; border-radius: 7px; margin-top: 13px; padding: 9px 8px 10px; }
+QGroupBox#sidebarSettings::title { color: #b5dbff; font-weight: 700; }
+QLabel#printFeedback { color: #bcd3e7; font-size: 12px; padding: 6px 2px; }
+QProgressBar#printProgress { border: 1px solid #5b7693; border-radius: 4px; min-height: 8px; background: #223449; }
+QProgressBar#printProgress::chunk { background: #78b8f4; }
 
 QLabel#dropHint { color: #b8c4d1; font-size: 12px; padding: 6px 2px; }
 

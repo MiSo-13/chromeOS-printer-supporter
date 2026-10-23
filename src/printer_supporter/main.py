@@ -23,7 +23,7 @@ from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QHBoxLayout, QLabel,
     QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
-    QSpinBox, QTabWidget, QTextEdit, QPlainTextEdit, QVBoxLayout, QWidget, QLineEdit, QGroupBox, QStackedWidget, QFrame,
+    QSpinBox, QTabWidget, QTextEdit, QPlainTextEdit, QVBoxLayout, QWidget, QLineEdit, QGroupBox, QStackedWidget, QFrame, QProgressBar,
 )
 
 from .backend import CupsService, PrintError, PrintJob, SUPPORTED_EXTENSIONS, OFFICE_EXTENSIONS
@@ -104,6 +104,7 @@ class MainWindow(QMainWindow):
         self.option_generation = 0
         self.option_printer = ""
         self.option_keys: dict[str, str] = {}
+        self._print_busy = False
         QApplication.instance().installEventFilter(self)
         self.setAcceptDrops(True)
         self.setWindowTitle("ChromeOS Printer Supporter")
@@ -158,6 +159,19 @@ class MainWindow(QMainWindow):
             button.clicked.connect(lambda checked=False, i=index: self._switch_page(i))
             side_layout.addWidget(button)
             self.navigation.append(button)
+        settings_group = QGroupBox("설정")
+        settings_group.setObjectName("sidebarSettings")
+        settings_layout = QVBoxLayout(settings_group)
+        settings_layout.setSpacing(6)
+        self.theme_box = QComboBox()
+        self.theme_box.setObjectName("themeSelector")
+        self.theme_box.setAccessibleName("화면 테마")
+        self.theme_box.addItem("라이트", "light")
+        self.theme_box.addItem("다크", "dark")
+        self.theme_box.setCurrentIndex(1 if self.settings.data["theme"] == "dark" else 0)
+        self.theme_box.currentIndexChanged.connect(self._change_theme)
+        settings_layout.addWidget(self.theme_box)
+        side_layout.addWidget(settings_group)
         workspace.addWidget(sidebar)
         workspace.addWidget(tabs, 1)
 
@@ -280,7 +294,17 @@ class MainWindow(QMainWindow):
         self.test_page_button.clicked.connect(self.print_test_page)
         print_actions.addWidget(self.test_page_button)
         settings_layout.addLayout(print_actions)
-        
+        self.print_progress = QProgressBar()
+        self.print_progress.setObjectName("printProgress")
+        self.print_progress.setRange(0, 0)
+        self.print_progress.setTextVisible(False)
+        self.print_progress.setVisible(False)
+        settings_layout.addWidget(self.print_progress)
+        self.print_feedback = QLabel("문서와 프린터를 선택한 뒤 인쇄해 주세요.")
+        self.print_feedback.setObjectName("printFeedback")
+        self.print_feedback.setWordWrap(True)
+        settings_layout.addWidget(self.print_feedback)
+
         settings_layout.addStretch()
         add_page(print_page, "문서 인쇄")
 
@@ -342,20 +366,6 @@ class MainWindow(QMainWindow):
 
         add_page(PrinterSetupWidget(on_registered=self.refresh_all), "프린터 추가")
         side_layout.addStretch()
-        theme_row = QHBoxLayout()
-        theme_row.setSpacing(8)
-        theme_label = QLabel("화면 테마")
-        theme_label.setObjectName("sidebarCaption")
-        theme_row.addWidget(theme_label)
-        self.theme_box = QComboBox()
-        self.theme_box.setObjectName("themeSelector")
-        self.theme_box.setAccessibleName("화면 테마")
-        self.theme_box.addItem("라이트", "light")
-        self.theme_box.addItem("다크", "dark")
-        self.theme_box.setCurrentIndex(1 if self.settings.data["theme"] == "dark" else 0)
-        self.theme_box.currentIndexChanged.connect(self._change_theme)
-        theme_row.addWidget(self.theme_box, 1)
-        side_layout.addLayout(theme_row)
         self._switch_page(0)
         footer = QHBoxLayout()
         footer.addStretch()
@@ -823,7 +833,21 @@ class MainWindow(QMainWindow):
             self._set_preview_navigation(False)
             self.preview_retry_button.setVisible(True)
 
+    def _set_print_busy(self, busy: bool, message: str = ""):
+        """문서 인쇄·테스트 인쇄 중복 요청을 앱 레벨에서도 차단합니다."""
+        self._print_busy = busy
+        self.print_button.setEnabled(not busy)
+        self.test_page_button.setEnabled(not busy)
+        self.print_button.setText("인쇄 요청 중…" if busy else "인쇄")
+        self.test_page_button.setText("요청 중…" if busy else "테스트 페이지 인쇄")
+        self.print_progress.setVisible(busy)
+        if message:
+            self.print_feedback.setText(message)
+            self.status.setText(message)
+
     def print_test_page(self):
+        if self._print_busy:
+            return
         printer = self.printer_box.currentText()
         if not printer:
             self.show_error("테스트할 프린터를 먼저 선택해 주세요.")
@@ -840,7 +864,7 @@ class MainWindow(QMainWindow):
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
-        self.test_page_button.setEnabled(False)
+        self._set_print_busy(True, "테스트 페이지를 CUPS에 보내는 중…")
 
         def operation():
             try:
@@ -848,18 +872,26 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 return (False, str(exc))
 
-        self._background(operation, self._test_page_printed)
+        try:
+            self._background(operation, self._test_page_printed)
+        except Exception as exc:
+            self._set_print_busy(False, "인쇄 요청 실패")
+            self.show_error(str(exc))
 
     def _test_page_printed(self, result):
-        self.test_page_button.setEnabled(True)
+        self._set_print_busy(False)
         success, message = result
         if success:
+            self.print_feedback.setText("테스트 페이지 접수 완료 · 인쇄 대기열에서 확인하세요.")
             self.status.setText(f"테스트 페이지 접수: {message}")
             self.refresh_jobs()
         else:
+            self.print_feedback.setText("테스트 페이지 요청 실패 · 오류를 확인하세요.")
             self.show_error(message)
 
     def print_selected(self):
+        if self._print_busy:
+            return
         if not self.selected_file or not self.printer_box.currentText():
             self.show_error("프린터와 파일을 선택해 주세요.")
             return
@@ -879,7 +911,7 @@ class MainWindow(QMainWindow):
             except ValueError as exc:
                 self.show_error(str(exc))
                 return
-        self.print_button.setEnabled(False)
+        self._set_print_busy(True, "인쇄 작업을 CUPS에 보내는 중…")
         source, printer = self.selected_file, self.printer_box.currentText()
         copies, paper = self.copies.value(), self.paper.currentData()
         selected_options = self._selected_print_options()
@@ -889,15 +921,21 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 return (False, str(exc))
 
-        self._background(print_operation, self._printed)
+        try:
+            self._background(print_operation, self._printed)
+        except Exception as exc:
+            self._set_print_busy(False, "인쇄 요청 실패")
+            self.show_error(str(exc))
 
     def _printed(self, result):
-        self.print_button.setEnabled(True)
+        self._set_print_busy(False)
         success, message = result
         if success:
+            self.print_feedback.setText("인쇄 작업 접수 완료 · 인쇄 대기열에서 확인하세요.")
             self.status.setText(f"작업 접수: {message}")
             self.refresh_jobs()
         else:
+            self.print_feedback.setText("인쇄 요청 실패 · 오류를 확인하세요.")
             self.show_error(message)
 
     def cancel_selected(self):
