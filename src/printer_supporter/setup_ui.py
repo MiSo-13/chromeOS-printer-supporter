@@ -16,6 +16,7 @@ from .discovery import (
     Registration, manual_printer,
 )
 from .identification import PrinterIdentity, identify_printer, unknown_identity
+from .support_catalog import assess_printer
 from .driver_recommendation import DriverAdvisor, DriverRecommendation
 from .driver_installation import (
     DriverInstallPlan, DriverInstallService, official_support_for, package_for_identity,
@@ -98,6 +99,16 @@ class PrinterSetupWidget(QWidget):
         self.identity_advice = QLabel("IPP 속성 확인은 실제 인쇄 없이 조회합니다.")
         self.identity_advice.setWordWrap(True)
         details_layout.addWidget(self.identity_advice)
+        self.focus_summary = QLabel("우선 안내 모델 목록과 비교합니다.")
+        self.focus_summary.setObjectName("focusSupportSummary")
+        self.focus_summary.setWordWrap(True)
+        details_layout.addWidget(self.focus_summary)
+        self.focus_detail = QLabel(
+            "목록에 없더라도 IPP/CUPS 호환성 확인과 수동 드라이버 선택은 계속 사용할 수 있습니다."
+        )
+        self.focus_detail.setObjectName("focusSupportDetail")
+        self.focus_detail.setWordWrap(True)
+        details_layout.addWidget(self.focus_detail)
         self.identify_button = QPushButton("모델 정보 다시 확인")
         self.identify_button.setEnabled(False)
         self.identify_button.clicked.connect(self.identify_current)
@@ -281,6 +292,8 @@ class PrinterSetupWidget(QWidget):
         self.recommendation_detail.setText("IPP 속성 조회 후 로컬 CUPS 목록을 비교합니다.")
         self.identify_button.setEnabled(False)
         self.identity_summary.setText("모델 정보를 확인하는 중…")
+        self.focus_summary.setText("우선 지원 안내 목록 확인 중…")
+        self.focus_detail.setText("장치에서 확인된 모델명과 목록을 비교합니다.")
         self.identity_evidence.setText(f"연결 방식: {device.scheme.upper()} / 조회 중")
         self.identity_advice.setText("IPP 프린터만 읽기 전용 속성 조회를 실행합니다.")
         worker = Worker(lambda: (generation, device, self.identifier(device)))
@@ -314,6 +327,9 @@ class PrinterSetupWidget(QWidget):
         self.identity_advice.setToolTip(
             "지원 형식: " + (", ".join(identity.document_formats) or "미확인")
         )
+        assessment = assess_printer(identity)
+        self.focus_summary.setText(assessment.title)
+        self.focus_detail.setText(assessment.detail)
         # 설치 후보가 없는 대부분의 프린터는 공식 URL만 조회하므로
         # 별도 스레드를 만들지 않고 즉시 안내해 창 종료 시 경쟁을 줄입니다.
         if package_for_identity(identity) is None:
