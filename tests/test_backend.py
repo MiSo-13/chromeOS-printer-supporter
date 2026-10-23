@@ -148,8 +148,8 @@ def test_test_page_prints_once_and_cleans_up():
     assert commands[0][:7] == [
         "lp", "-d", "Samsung_SL_M2030W", "-n", "1", "-o", "media=A4",
     ]
-    assert page_contents[0].startswith("PrintHub - Printer Test Page\\n")
-    assert "Printer : Samsung_SL_M2030W\\n" in page_contents[0]
+    assert page_contents[0].startswith("PrintHub - Printer Test Page\n")
+    assert "Printer : Samsung_SL_M2030W\n" in page_contents[0]
     assert not Path(commands[0][-1]).exists()
 
 
