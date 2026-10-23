@@ -1,6 +1,9 @@
 """PrintHub 데스크톱 UI 공통 스타일."""
 
 APP_STYLESHEET = """
+QLabel#previewCanvas { background: #f0f2f5; color: #64717e; border-radius: 6px; }
+QPushButton#primaryButton { background: #225e9e; color: white; border: none; font-weight: 600; padding: 10px 22px; }
+
 QMainWindow, QWidget { background: #f5f6f8; color: #25313c; font-size: 13px; }
 QMainWindow { background: #f5f6f8; }
 QLabel { background: transparent; }
@@ -23,6 +26,9 @@ QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
 """
 
 DARK_STYLESHEET = """
+QLabel#previewCanvas { background: #303843; color: #c0cad5; border-radius: 6px; }
+QPushButton#primaryButton { background: #357bbd; color: white; border: none; font-weight: 600; padding: 10px 22px; }
+
 QMainWindow, QWidget { background: #181c22; color: #e1e6ed; font-size: 13px; }
 QMainWindow { background: #181c22; }
 QLabel { background: transparent; }
