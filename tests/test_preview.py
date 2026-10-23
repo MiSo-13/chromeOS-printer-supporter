@@ -1,7 +1,7 @@
 from pathlib import Path
 from subprocess import CompletedProcess
 import pytest
-from printer_supporter.preview import normalize_page_ranges, pdf_page_count, render_pdf_page
+from printer_supporter.preview import (normalize_page_ranges, pdf_page_count, render_pdf_page, read_text_preview, MAX_TEXT_PREVIEW_BYTES)
 from printer_supporter.backend import CupsService, PrintError
 
 @pytest.mark.parametrize("value,expected", [("1", "1"), ("1-3, 5,8-10", "1-3,5,8-10")])
@@ -35,3 +35,23 @@ def test_print_range_only_applies_to_job(tmp_path):
     with pytest.raises(PrintError):
         CupsService(runner).print_file(path, "printer", page_ranges="0-2")
     assert len(calls) == 1
+
+
+def test_text_preview_and_size_limit(tmp_path):
+    small = tmp_path / "small.txt"
+    small.write_text("안녕하세요\\n인쇄 테스트", encoding="utf-8")
+    assert read_text_preview(small) == "안녕하세요\\n인쇄 테스트"
+
+    large = tmp_path / "large.txt"
+    large.write_bytes(b"a" * (MAX_TEXT_PREVIEW_BYTES + 200))
+    preview = read_text_preview(large)
+    assert preview.startswith("a" * 100)
+    assert "128KB" in preview
+    assert len(preview) < MAX_TEXT_PREVIEW_BYTES + 100
+
+
+def test_text_preview_rejects_binary(tmp_path):
+    binary = tmp_path / "bad.txt"
+    binary.write_bytes(bytes([0, 1, 2]))
+    with pytest.raises(ValueError, match="텍스트"):
+        read_text_preview(binary)
