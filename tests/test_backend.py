@@ -76,3 +76,55 @@ def test_office_converts_in_temporary_directory(tmp_path, monkeypatch):
     assert commands[1][0] == "lp"
     assert commands[1][-1].endswith("문서.pdf")
     assert not Path(commands[1][-1]).exists()
+
+
+def test_queue_queries_distinguish_pending_and_completed():
+    commands = []
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        return result(command, stdout="printer-11 jhheo 123 Fri Oct 23 09:20:00 2026\\n")
+
+    service = CupsService(runner)
+    assert service.jobs("printer")[0].job_id == "printer-11"
+    assert service.completed_jobs("printer")[0].job_id == "printer-11"
+    assert commands == [
+        ["lpstat", "-W", "not-completed", "-o", "printer"],
+        ["lpstat", "-W", "completed", "-o", "printer"],
+    ]
+
+
+@pytest.mark.parametrize("operation,expected", [
+    ("hold", ["lp", "-i", "printer-10", "-H", "hold"]),
+    ("resume", ["lp", "-i", "printer-10", "-H", "resume"]),
+    ("cancel", ["cancel", "printer-10"]),
+])
+def test_only_owner_can_mutate_job(operation, expected):
+    commands = []
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        return result(command)
+
+    service = CupsService(runner)
+    job = PrintJob("printer-10", "jhheo", "20", "date", "printer")
+    getattr(service, operation)(job, "jhheo")
+    assert commands == [expected]
+
+    with pytest.raises(PrintError, match="다른 사용자"):
+        getattr(service, operation)(job, "someone_else")
+    assert commands == [expected]
+
+
+@pytest.mark.parametrize("bad_id", ["--help", "printer-abc", "other-10"])
+def test_invalid_job_id_is_not_submitted(bad_id):
+    commands = []
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        return result(command)
+
+    job = PrintJob(bad_id, "jhheo", "20", "date", "printer")
+    with pytest.raises(PrintError, match="올바르지 않은"):
+        CupsService(runner).hold(job, "jhheo")
+    assert commands == []
