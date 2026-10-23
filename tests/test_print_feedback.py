@@ -25,19 +25,19 @@ def test_print_buttons_busy_state_and_retry(tmp_path):
         window._print_busy = False
         window.selected_file = Path(sys.argv[1])
         window.preview_count = 1
-        window.status = QLabel()
-        window.print_feedback = QLabel()
-        window.print_button = QPushButton("인쇄")
-        window.test_page_button = QPushButton("테스트 페이지 인쇄")
-        window.print_progress = QProgressBar()
+        window.status = QLabel(window)
+        window.print_feedback = QLabel(window)
+        window.print_button = QPushButton("인쇄", window)
+        window.test_page_button = QPushButton("테스트 페이지 인쇄", window)
+        window.print_progress = QProgressBar(window)
         window.print_progress.setVisible(False)
-        window.printer_box = QComboBox()
+        window.printer_box = QComboBox(window)
         window.printer_box.addItem("Test_Queue")
-        window.paper = QComboBox()
+        window.paper = QComboBox(window)
         window.paper.addItem("A4", "A4")
-        window.copies = QSpinBox()
+        window.copies = QSpinBox(window)
         window.copies.setValue(2)
-        window.page_range = QLineEdit()
+        window.page_range = QLineEdit(window)
         window.dependency_manager = type(
             "Deps", (), {"installed": lambda self, *_args: True},
         )()
@@ -62,8 +62,7 @@ def test_print_buttons_busy_state_and_retry(tmp_path):
         assert window._print_busy
         assert not window.print_button.isEnabled()
         assert not window.test_page_button.isEnabled()
-        assert window.print_progress.isVisible() is False  # parentless widget
-        assert window.print_progress.isHidden() is False  # setVisible(True) was called
+        assert not window.print_progress.isHidden()
         assert "요청 중" in window.print_button.text()
         assert "CUPS" in window.print_feedback.text()
         window.print_selected()
