@@ -133,7 +133,7 @@ def test_installed_cups_model_registration_requires_user_approval():
         if command == ["lpinfo", "-m"]:
             return CompletedProcess(
                 command, 0,
-                "drv:///samsung/m203x.ppd Samsung M203x Series\\n", "",
+                "drv:///samsung/m203x.ppd Samsung M203x Series\n", "",
             )
         return CompletedProcess(command, 0, "", "")
 
@@ -160,7 +160,7 @@ def test_cups_model_unavailable_at_registration_cannot_be_submitted():
         calls.append(command)
         if command == ["lpinfo", "-m"]:
             return CompletedProcess(
-                command, 0, "drv:///other.ppd Samsung M2030W\\n", "",
+                command, 0, "drv:///other.ppd Samsung M2030W\n", "",
             )
         return CompletedProcess(command, 0, "", "")
 
@@ -175,7 +175,7 @@ def test_cups_model_unavailable_at_registration_cannot_be_submitted():
 
 
 @pytest.mark.parametrize("model", [None, "raw", "everywhere", "bad model",
-                                    "-P", "bad\\nvalue"])
+                                    "-P", "bad\nvalue"])
 def test_invalid_cups_model_rejected_before_any_system_command(model):
     calls = []
     service = DiscoveryService(
