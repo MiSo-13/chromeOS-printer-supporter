@@ -44,7 +44,8 @@ def test_without_display_does_not_fallback_to_wayland():
     assert "QT_QPA_PLATFORM" not in env
 
 
-def test_missing_xcb_plugin_is_actionable():
+def test_missing_xcb_plugin_is_actionable(monkeypatch):
+    monkeypatch.setattr("printer_supporter.qt_platform._xcb_plugin", lambda: None)
     with pytest.raises(QtPlatformError, match="플러그인"):
         configure_qt_platform(env={"DISPLAY": ":0"}, platform="linux", crostini=True,
                               plugin=None, missing=())
