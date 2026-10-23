@@ -128,3 +128,49 @@ def test_invalid_job_id_is_not_submitted(bad_id):
     with pytest.raises(PrintError, match="올바르지 않은"):
         CupsService(runner).hold(job, "jhheo")
     assert commands == []
+
+
+def test_test_page_prints_once_and_cleans_up():
+    commands = []
+    page_contents = []
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        if command[0] == "lp":
+            path = Path(command[-1])
+            assert path.is_file()
+            page_contents.append(path.read_text(encoding="ascii"))
+        return result(command, stdout="request id is Samsung_SL_M2030W-21")
+
+    response = CupsService(runner).print_test_page("Samsung_SL_M2030W", media="A4")
+    assert "Samsung_SL_M2030W-21" in response
+    assert len(commands) == 1
+    assert commands[0][:7] == [
+        "lp", "-d", "Samsung_SL_M2030W", "-n", "1", "-o", "media=A4",
+    ]
+    assert page_contents[0].startswith("PrintHub - Printer Test Page\\n")
+    assert "Printer : Samsung_SL_M2030W\\n" in page_contents[0]
+    assert not Path(commands[0][-1]).exists()
+
+
+@pytest.mark.parametrize("printer,media", [
+    ("", "A4"), ("--help", "A4"), ("Samsung_SL_M2030W", "invalid"),
+])
+def test_test_page_rejects_bad_destination_without_printing(printer, media):
+    commands = []
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        return result(command)
+
+    with pytest.raises(PrintError):
+        CupsService(runner).print_test_page(printer, media=media)
+    assert commands == []
+
+
+def test_test_page_propagates_cups_error():
+    def runner(command, **kwargs):
+        return result(command, stderr="printer offline", returncode=1)
+
+    with pytest.raises(PrintError, match="offline"):
+        CupsService(runner).print_test_page("Samsung_SL_M2030W")
