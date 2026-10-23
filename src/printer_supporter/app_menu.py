@@ -20,6 +20,7 @@ def build_menus(
     bar.setNativeMenuBar(False)
 
     file_menu = bar.addMenu("파일")
+    file_menu.setObjectName("fileMenu")
     open_action = file_menu.addAction("문서 열기…")
     open_action.setShortcut("Ctrl+O")
     open_action.triggered.connect(open_file)
@@ -32,7 +33,9 @@ def build_menus(
     quit_action.triggered.connect(window.close)
 
     settings_menu = bar.addMenu("설정")
+    settings_menu.setObjectName("settingsMenu")
     theme_menu = settings_menu.addMenu("화면 테마")
+    theme_menu.setObjectName("themeMenu")
     theme_group = QActionGroup(window)
     theme_group.setExclusive(True)
     theme_actions = {}
