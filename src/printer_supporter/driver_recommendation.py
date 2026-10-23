@@ -116,11 +116,18 @@ def recommend_drivers(
             "인쇄 성공을 보장하지 않으며 실패 시 설치된 CUPS 모델이나 제조사 드라이버를 확인하세요.",
             catalog_status, verified,
         )
-    if verified and matches:
+    if verified and len(matches) == 1:
         return DriverRecommendation(
             "model", matches[0].model_id, matches,
             "IPP 장치가 보고한 모델명과 설치된 CUPS 드라이버 설명이 일치합니다. "
             "사용하려면 실제 프린터의 모델과 드라이버 호환성을 확인한 뒤 등록하세요.",
+            catalog_status, True,
+        )
+    if verified and len(matches) > 1:
+        return DriverRecommendation(
+            None, None, matches,
+            "동일한 모델명의 설치된 드라이버가 여러 개 있습니다. "
+            "잘못된 드라이버를 자동 선택하지 않으니 목록을 직접 확인하세요.",
             catalog_status, True,
         )
     if matches:
