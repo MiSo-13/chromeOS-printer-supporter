@@ -181,7 +181,7 @@ def test_service_fetches_supported_printer_options():
 
     def runner(command, **kwargs):
         commands.append(command)
-        return result(command, stdout="ColorModel/Mode: *Gray RGB\\n")
+        return result(command, stdout="ColorModel/Mode: *Gray RGB\n")
 
     options = CupsService(runner).printer_options("Samsung_SL_M2030W")
     assert commands == [["lpoptions", "-p", "Samsung_SL_M2030W", "-l"]]
