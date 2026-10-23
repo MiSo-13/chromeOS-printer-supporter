@@ -155,7 +155,8 @@ class CupsService:
             return self._submit(page, printer, 1, media, options=options)
 
     def print_file(self, source: Path, printer: str, *, copies: int = 1,
-                   media: str | None = "A4", options: dict[str, str] | None = None) -> str:
+                   media: str | None = "A4", options: dict[str, str] | None = None,
+                   page_ranges: str | None = None) -> str:
         source = Path(source).expanduser()
         if not source.is_file():
             raise PrintError("선택한 파일이 존재하지 않습니다.")
@@ -181,12 +182,18 @@ class CupsService:
                 converted = output_dir / f"{source.stem}.pdf"
                 if not converted.is_file():
                     raise PrintError("Office 문서를 PDF로 변환하지 못했습니다.")
-                return self._submit(converted, printer, copies, media, options=options)
-        return self._submit(source, printer, copies, media, options=options)
+                return self._submit(converted, printer, copies, media, options=options, page_ranges=page_ranges)
+        return self._submit(source, printer, copies, media, options=options, page_ranges=page_ranges)
 
     def _submit(self, path: Path, printer: str, copies: int, media: str | None,
-                *, options: dict[str, str] | None = None) -> str:
+                *, options: dict[str, str] | None = None, page_ranges: str | None = None) -> str:
         selection = dict(options or {})
+        if page_ranges is not None:
+            from .preview import normalize_page_ranges
+            try:
+                selection["page-ranges"] = normalize_page_ranges(page_ranges)
+            except ValueError as exc:
+                raise PrintError(str(exc)) from exc
         try:
             validate_job_options(selection)
         except ValueError as exc:

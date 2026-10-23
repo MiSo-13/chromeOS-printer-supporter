@@ -22,11 +22,12 @@ from PyQt6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QHBoxLayout, QLabel,
     QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
-    QSpinBox, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
+    QSpinBox, QTabWidget, QTextEdit, QVBoxLayout, QWidget, QLineEdit, QGroupBox,
 )
 
 from .backend import CupsService, PrintError, PrintJob, SUPPORTED_EXTENSIONS
 from .capabilities import feature_options
+from .preview import normalize_page_ranges, pdf_page_count, render_pdf_page
 from .setup_ui import PrinterSetupWidget
 from .dependencies import CUPS, LIBREOFFICE, DependencyManager
 
@@ -63,16 +64,29 @@ class MainWindow(QMainWindow):
         self.option_printer = ""
         self.option_keys: dict[str, str] = {}
         self.setWindowTitle("PrintHub · ChromeOS 프린터 관리자")
-        self.resize(820, 680)
+        self.resize(1000, 760)
+        self.setStyleSheet("""
+            QMainWindow, QWidget { background: #f6f7f9; color: #222b35; font-size: 13px; }
+            QTabWidget::pane { border: 1px solid #dce1e6; background: #ffffff; border-radius: 8px; }
+            QTabBar::tab { padding: 11px 19px; color: #5a6672; background: #edf0f3; }
+            QTabBar::tab:selected { background: #ffffff; color: #1d4d8f; font-weight: 600; }
+            QPushButton { background: #ffffff; border: 1px solid #cbd3dc; border-radius: 6px; padding: 8px 13px; }
+            QPushButton:hover { border-color: #447ab6; }
+            QPushButton:disabled { color: #9aa4ae; background: #f1f3f5; }
+            QComboBox, QSpinBox, QLineEdit { background: #ffffff; border: 1px solid #cbd3dc; border-radius: 5px; padding: 6px; }
+            QListWidget, QTextEdit { background: #ffffff; border: 1px solid #dce1e6; border-radius: 5px; }
+            QGroupBox { background: #ffffff; border: 1px solid #dce1e6; border-radius: 8px; margin-top: 12px; padding: 14px; font-weight: 600; }
+            QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 5px; }
+        """)
 
         root = QWidget()
         layout = QVBoxLayout(root)
         self.setCentralWidget(root)
 
         heading = QLabel("PrintHub")
-        heading.setStyleSheet("font-size: 26px; font-weight: 700")
+        heading.setStyleSheet("font-size: 22px; font-weight: 650; color: #182e48; padding: 5px 0;")
         layout.addWidget(heading)
-        self.status = QLabel("CUPS 연결 확인 중…")
+        self.status = QLabel("프린터 연결 확인 중…")
         layout.addWidget(self.status)
 
         selection = QHBoxLayout()
@@ -84,7 +98,7 @@ class MainWindow(QMainWindow):
         refresh = QPushButton("새로고침")
         refresh.clicked.connect(self.refresh_all)
         selection.addWidget(refresh)
-        check_packages = QPushButton("패키지 점검")
+        check_packages = QPushButton("환경 점검")
         check_packages.clicked.connect(lambda: self.check_dependencies(required_only=False))
         selection.addWidget(check_packages)
         layout.addLayout(selection)
@@ -101,7 +115,37 @@ class MainWindow(QMainWindow):
         choose.clicked.connect(self.choose_file)
         file_row.addWidget(choose)
         print_layout.addLayout(file_row)
-        print_layout.addWidget(QLabel("PDF, Word, Excel, PowerPoint, 텍스트 및 이미지 지원"))
+        print_layout.addWidget(QLabel("PDF · Office 문서 · 이미지 · 텍스트"))
+        preview_group = QGroupBox("문서 미리보기")
+        preview_layout = QVBoxLayout(preview_group)
+        self.preview_label = QLabel("PDF 파일을 선택하면 미리보기가 표시됩니다.")
+        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_label.setMinimumHeight(230)
+        self.preview_label.setStyleSheet("background: #f0f2f5; border-radius: 6px; color: #64717e;")
+        preview_layout.addWidget(self.preview_label)
+        navigation = QHBoxLayout()
+        self.prev_page = QPushButton("이전")
+        self.prev_page.clicked.connect(lambda: self._show_preview_page(self.preview_index - 1))
+        self.next_page = QPushButton("다음")
+        self.next_page.clicked.connect(lambda: self._show_preview_page(self.preview_index + 1))
+        self.page_indicator = QLabel("—")
+        navigation.addStretch()
+        navigation.addWidget(self.prev_page)
+        navigation.addWidget(self.page_indicator)
+        navigation.addWidget(self.next_page)
+        navigation.addStretch()
+        preview_layout.addLayout(navigation)
+        print_layout.addWidget(preview_group)
+        self.preview_index = 0
+        self.preview_count = 0
+        self.prev_page.setEnabled(False)
+        self.next_page.setEnabled(False)
+        range_row = QHBoxLayout()
+        range_row.addWidget(QLabel("페이지"))
+        self.page_range = QLineEdit()
+        self.page_range.setPlaceholderText("전체 페이지 (예: 1-3, 5)")
+        range_row.addWidget(self.page_range, 1)
+        print_layout.addLayout(range_row)
         options = QHBoxLayout()
         options.addWidget(QLabel("인쇄 매수"))
         self.copies = QSpinBox()
@@ -137,14 +181,15 @@ class MainWindow(QMainWindow):
         self.option_info = QLabel("프린터 옵션을 확인 중입니다…")
         print_layout.addWidget(self.option_info)
         print_actions = QHBoxLayout()
-        self.print_button = QPushButton("인쇄하기")
+        self.print_button = QPushButton("인쇄")
+        self.print_button.setStyleSheet("background: #225e9e; color: white; border: none; font-weight: 600; padding: 10px 22px;")
         self.print_button.clicked.connect(self.print_selected)
         print_actions.addWidget(self.print_button)
         self.test_page_button = QPushButton("테스트 페이지 인쇄")
         self.test_page_button.clicked.connect(self.print_test_page)
         print_actions.addWidget(self.test_page_button)
         print_layout.addLayout(print_actions)
-        print_layout.addWidget(QLabel("테스트 페이지는 선택한 프린터로 1장 출력됩니다."))
+        
         print_layout.addStretch()
         tabs.addTab(print_page, "문서 인쇄")
 
@@ -154,7 +199,7 @@ class MainWindow(QMainWindow):
         queue_layout.addWidget(queue_tabs)
         active_page = QWidget()
         active_layout = QVBoxLayout(active_page)
-        active_layout.addWidget(QLabel("대기 또는 처리 중인 CUPS 작업 (작업별 상세 진행률은 제공되지 않습니다)"))
+        active_layout.addWidget(QLabel("대기 중이거나 인쇄 중인 작업"))
         self.job_list = QListWidget()
         self.job_list.currentItemChanged.connect(self._update_queue_actions)
         active_layout.addWidget(self.job_list)
@@ -172,13 +217,13 @@ class MainWindow(QMainWindow):
         queue_tabs.addTab(active_page, "진행 중인 작업")
         history_page = QWidget()
         history_layout = QVBoxLayout(history_page)
-        history_layout.addWidget(QLabel("CUPS 처리 종료 이력 (종이 출력 성공을 의미하지 않음)"))
+        history_layout.addWidget(QLabel("최근 처리된 작업"))
         self.history_list = QListWidget()
         history_layout.addWidget(self.history_list)
         queue_tabs.addTab(history_page, "처리 종료 이력")
         self.queue_info = QLabel("목록 갱신 중…")
         queue_layout.addWidget(self.queue_info)
-        queue_layout.addWidget(QLabel("이 Linux CUPS 큐의 작업만 표시하며, 다른 PC에서 직접 보낸 작업은 보이지 않을 수 있습니다."))
+        
         tabs.addTab(queue_page, "인쇄 대기열")
         self._update_queue_actions()
 
@@ -187,7 +232,7 @@ class MainWindow(QMainWindow):
         self.state_text = QTextEdit()
         self.state_text.setReadOnly(True)
         state_layout.addWidget(self.state_text)
-        state_layout.addWidget(QLabel("장치 오류는 연결 방식에 따라 일부만 보고될 수 있습니다."))
+        
         tabs.addTab(state_page, "상태 및 오류")
 
         tabs.addTab(PrinterSetupWidget(on_registered=self.refresh_all), "프린터 추가")
@@ -428,6 +473,37 @@ class MainWindow(QMainWindow):
         if name:
             self.selected_file = Path(name)
             self.file_label.setText(self.selected_file.name)
+            self._load_preview()
+
+    def _load_preview(self):
+        self.preview_index = 0
+        self.preview_count = 0
+        if self.selected_file and self.selected_file.suffix.lower() == ".pdf":
+            try:
+                self.preview_count = pdf_page_count(self.selected_file)
+                self._show_preview_page(0)
+            except Exception as exc:
+                self.preview_label.setText(f"미리보기를 열 수 없습니다: {exc}")
+        else:
+            self.preview_label.setText("미리보기는 PDF 파일에서 사용할 수 있습니다.")
+            self.page_indicator.setText("—")
+            self.prev_page.setEnabled(False)
+            self.next_page.setEnabled(False)
+
+    def _show_preview_page(self, index: int):
+        if not self.selected_file or not 0 <= index < self.preview_count:
+            return
+        from PyQt6.QtGui import QPixmap
+        try:
+            image = QPixmap()
+            image.loadFromData(render_pdf_page(self.selected_file, index))
+            self.preview_label.setPixmap(image.scaled(700, 320, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.preview_index = index
+            self.page_indicator.setText(f"{index + 1} / {self.preview_count}")
+            self.prev_page.setEnabled(index > 0)
+            self.next_page.setEnabled(index + 1 < self.preview_count)
+        except Exception as exc:
+            self.preview_label.setText(f"미리보기 오류: {exc}")
 
     def print_test_page(self):
         printer = self.printer_box.currentText()
@@ -478,13 +554,20 @@ class MainWindow(QMainWindow):
         if not self.dependency_manager.installed(CUPS):
             self._offer_install([CUPS])
             return
+        ranges = self.page_range.text().strip() or None
+        if ranges:
+            try:
+                ranges = normalize_page_ranges(ranges, self.preview_count or None)
+            except ValueError as exc:
+                self.show_error(str(exc))
+                return
         self.print_button.setEnabled(False)
         source, printer = self.selected_file, self.printer_box.currentText()
         copies, paper = self.copies.value(), self.paper.currentData()
         selected_options = self._selected_print_options()
         def print_operation():
             try:
-                return (True, self.service.print_file(source, printer, copies=copies, media=paper, options=selected_options))
+                return (True, self.service.print_file(source, printer, copies=copies, media=paper, options=selected_options, page_ranges=ranges))
             except Exception as exc:
                 return (False, str(exc))
 

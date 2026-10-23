@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "ChromeOS Crostini용 CUPS 프린터 관리 앱"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["PyQt6>=6.6,<7"]
+dependencies = ["PyQt6>=6.6,<7", "PyMuPDF>=1.24,<2"]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
