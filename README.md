@@ -4,16 +4,17 @@ ChromeOS **Linux 개발 환경(Crostini)**에서 문서를 인쇄하고 CUPS 프
 
 ## 설치
 
-Chromebook에서 Linux 개발 환경을 켠 뒤 터미널에서 실행합니다.
+Chromebook에서 **설정 → 개발자 → Linux 개발 환경**을 활성화하세요.
 
-```bash
-git clone https://github.com/MiSo-13/chromeOS-printer-supporter.git
-cd chromeOS-printer-supporter
-bash install.sh
-.venv/bin/chromeos-printer-supporter
-```
+1. [최신 릴리즈](https://github.com/MiSo-13/chromeOS-printer-supporter/releases)에서 Chromebook CPU에 맞는 `.deb` 파일을 받습니다.
+   - Intel/AMD Chromebook: `amd64.deb`
+   - ARM Chromebook: `arm64.deb`
+2. ChromeOS **파일 앱**에서 다운로드한 `.deb` 파일을 열어 **Linux에 설치**합니다.
+3. 앱 런처의 **Linux 앱 → ChromeOS 프린터 지원**을 선택합니다. **Python이나 터미널을 실행할 필요가 없습니다.**
 
-설치 중 필요한 패키지를 안내하며 동의를 받습니다. **Office 문서 미리보기·인쇄에는 LibreOffice**가 필요합니다.
+Crostini(Debian 12 이상 호환 환경)가 필요하며 ChromeOS 자체 앱은 아닙니다. LibreOffice는 Office 미리보기·인쇄 시 필요할 수 있습니다.
+
+개발용 소스 설치는 `bash install.sh` 후 `.venv/bin/chromeos-printer-supporter`를 실행하세요.
 
 ## 사용 방법
 
