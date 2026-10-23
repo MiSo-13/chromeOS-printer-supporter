@@ -55,7 +55,7 @@ def test_install_uses_fixed_apt_arguments(tmp_path):
         service.which = lambda command: f"/usr/bin/{command}"
         return CompletedProcess(command, 0, "", "")
 
-    service = manager(tmp_path, binaries=binaries)
+    service = manager(tmp_path, binaries=binaries, runner=runner)
     # 테스트 중에 명령 목록이 변경되면 설치 후 검사에도 반영되어야 합니다.
     service.which = lambda command: f"/usr/bin/{command}" if command in binaries else None
     assert service.install([CUPS], approved=True).startswith("필요한 패키지")
