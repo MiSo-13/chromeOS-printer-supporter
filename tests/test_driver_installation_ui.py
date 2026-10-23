@@ -86,10 +86,16 @@ def test_official_support_and_apt_install_consent_ui(tmp_path):
         assert widget.install_button.isEnabled()
         assert widget.official_support_button.isEnabled()
 
-        QMessageBox.question = lambda *args, **kwargs: QMessageBox.StandardButton.No
+        import printer_supporter.setup_ui as setup_module
+        confirmations = []
+        def deny(*args, **kwargs):
+            confirmations.append(kwargs)
+            return False
+        setup_module.confirm_action = deny
         widget.install_driver()
         assert not calls
-        QMessageBox.question = lambda *args, **kwargs: QMessageBox.StandardButton.Yes
+        assert confirmations and "apt-get install" in confirmations[-1]["details"]
+        setup_module.confirm_action = lambda *args, **kwargs: True
         QMessageBox.information = lambda *args, **kwargs: QMessageBox.StandardButton.Ok
         widget.install_driver()
         widget.pool.waitForDone(5000)
