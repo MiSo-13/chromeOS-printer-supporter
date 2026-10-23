@@ -96,9 +96,15 @@ class MainWindow(QMainWindow):
         options.addWidget(self.paper)
         options.addStretch()
         print_layout.addLayout(options)
+        print_actions = QHBoxLayout()
         self.print_button = QPushButton("인쇄하기")
         self.print_button.clicked.connect(self.print_selected)
-        print_layout.addWidget(self.print_button)
+        print_actions.addWidget(self.print_button)
+        self.test_page_button = QPushButton("테스트 페이지 인쇄")
+        self.test_page_button.clicked.connect(self.print_test_page)
+        print_actions.addWidget(self.test_page_button)
+        print_layout.addLayout(print_actions)
+        print_layout.addWidget(QLabel("테스트 페이지는 선택한 프린터로 1장 출력됩니다."))
         print_layout.addStretch()
         tabs.addTab(print_page, "문서 인쇄")
 
@@ -325,6 +331,41 @@ class MainWindow(QMainWindow):
         if name:
             self.selected_file = Path(name)
             self.file_label.setText(self.selected_file.name)
+
+    def print_test_page(self):
+        printer = self.printer_box.currentText()
+        if not printer:
+            self.show_error("테스트할 프린터를 먼저 선택해 주세요.")
+            return
+        media = self.paper.currentText()
+        answer = QMessageBox.question(
+            self,
+            "테스트 페이지 인쇄",
+            f"'{printer}' 프린터로 {media} 테스트 페이지 1장을 출력할까요?\n"
+            "회사 공용 프린터에서 실제 종이가 출력될 수 있습니다.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.test_page_button.setEnabled(False)
+
+        def operation():
+            try:
+                return (True, self.service.print_test_page(printer, media=media))
+            except Exception as exc:
+                return (False, str(exc))
+
+        self._background(operation, self._test_page_printed)
+
+    def _test_page_printed(self, result):
+        self.test_page_button.setEnabled(True)
+        success, message = result
+        if success:
+            self.status.setText(f"테스트 페이지 접수: {message}")
+            self.refresh_jobs()
+        else:
+            self.show_error(message)
 
     def print_selected(self):
         if not self.selected_file or not self.printer_box.currentText():
