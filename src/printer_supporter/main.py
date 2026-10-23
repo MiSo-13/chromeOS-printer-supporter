@@ -44,6 +44,8 @@ class MainWindow(QMainWindow):
         self.pool = QThreadPool.globalInstance()
         self.selected_file: Path | None = None
         self.current_jobs: list[PrintJob] = []
+        self.completed_jobs: list[PrintJob] = []
+        self.queue_generation = 0
         self.setWindowTitle("PrintHub · ChromeOS 프린터 관리자")
         self.resize(820, 680)
 
@@ -102,13 +104,37 @@ class MainWindow(QMainWindow):
 
         queue_page = QWidget()
         queue_layout = QVBoxLayout(queue_page)
+        queue_tabs = QTabWidget()
+        queue_layout.addWidget(queue_tabs)
+        active_page = QWidget()
+        active_layout = QVBoxLayout(active_page)
+        active_layout.addWidget(QLabel("대기 또는 처리 중인 CUPS 작업 (작업별 상세 진행률은 제공되지 않습니다)"))
         self.job_list = QListWidget()
-        queue_layout.addWidget(self.job_list)
-        self.cancel_button = QPushButton("선택한 내 작업 취소")
+        self.job_list.currentItemChanged.connect(self._update_queue_actions)
+        active_layout.addWidget(self.job_list)
+        actions = QHBoxLayout()
+        self.hold_button = QPushButton("내 작업 보류")
+        self.hold_button.clicked.connect(lambda: self.change_selected_job("hold"))
+        actions.addWidget(self.hold_button)
+        self.resume_button = QPushButton("내 작업 재개")
+        self.resume_button.clicked.connect(lambda: self.change_selected_job("resume"))
+        actions.addWidget(self.resume_button)
+        self.cancel_button = QPushButton("내 작업 취소")
         self.cancel_button.clicked.connect(self.cancel_selected)
-        queue_layout.addWidget(self.cancel_button)
-        queue_layout.addWidget(QLabel("이 앱이 연결한 CUPS의 작업만 표시합니다. 다른 PC의 작업은 보이지 않을 수 있습니다."))
+        actions.addWidget(self.cancel_button)
+        active_layout.addLayout(actions)
+        queue_tabs.addTab(active_page, "진행 중인 작업")
+        history_page = QWidget()
+        history_layout = QVBoxLayout(history_page)
+        history_layout.addWidget(QLabel("CUPS 처리 종료 이력 (종이 출력 성공을 의미하지 않음)"))
+        self.history_list = QListWidget()
+        history_layout.addWidget(self.history_list)
+        queue_tabs.addTab(history_page, "처리 종료 이력")
+        self.queue_info = QLabel("목록 갱신 중…")
+        queue_layout.addWidget(self.queue_info)
+        queue_layout.addWidget(QLabel("이 Linux CUPS 큐의 작업만 표시하며, 다른 PC에서 직접 보낸 작업은 보이지 않을 수 있습니다."))
         tabs.addTab(queue_page, "인쇄 대기열")
+        self._update_queue_actions()
 
         state_page = QWidget()
         state_layout = QVBoxLayout(state_page)
@@ -192,19 +218,106 @@ class MainWindow(QMainWindow):
 
     def refresh_jobs(self, *_):
         printer = self.printer_box.currentText()
-        if printer:
-            self._background(lambda: self.service.jobs(printer), self._populate_jobs)
-            self._background(lambda: self.service.printer_reasons(printer), self.state_text.setPlainText)
-        else:
+        self.queue_generation += 1
+        generation = self.queue_generation
+        if not printer:
+            self.current_jobs = []
+            self.completed_jobs = []
             self.job_list.clear()
+            self.history_list.clear()
+            self.queue_info.setText("선택한 프린터가 없습니다.")
+            self._update_queue_actions()
+            return
+        self._background(
+            lambda: (printer, generation, self.service.jobs(printer)),
+            self._populate_jobs,
+        )
+        self._background(
+            lambda: (printer, generation, self.service.completed_jobs(printer)),
+            self._populate_history,
+        )
+        self._background(
+            lambda: (printer, generation, self.service.printer_reasons(printer)),
+            self._populate_reasons,
+        )
 
-    def _populate_jobs(self, jobs: list[PrintJob]):
+    def _valid_queue_result(self, printer: str, generation: int) -> bool:
+        return printer == self.printer_box.currentText() and generation == self.queue_generation
+
+    def _populate_reasons(self, result):
+        printer, generation, reason = result
+        if self._valid_queue_result(printer, generation):
+            self.state_text.setPlainText(reason)
+
+    def _populate_jobs(self, result):
+        printer, generation, jobs = result
+        if not self._valid_queue_result(printer, generation):
+            return
         self.current_jobs = jobs
+        selected = self.job_list.currentItem()
+        selected_id = selected.data(Qt.ItemDataRole.UserRole) if selected else None
         self.job_list.clear()
         for job in jobs:
-            item = QListWidgetItem(f"{job.job_id}  |  {job.owner}  |  {job.size} bytes  |  {job.submitted}")
+            owned = "내 작업" if job.owner == getpass.getuser() else "다른 사용자"
+            item = QListWidgetItem(
+                f"대기/처리 중  |  {job.job_id}  |  {owned} ({job.owner})  |  "
+                f"{job.size} bytes  |  {job.submitted}"
+            )
             item.setData(Qt.ItemDataRole.UserRole, job.job_id)
             self.job_list.addItem(item)
+            if job.job_id == selected_id:
+                self.job_list.setCurrentItem(item)
+        self._update_queue_actions()
+        self.queue_info.setText(f"진행 중인 작업 {len(jobs)}건 · 5초마다 자동 갱신")
+
+    def _populate_history(self, result):
+        printer, generation, jobs = result
+        if not self._valid_queue_result(printer, generation):
+            return
+        self.completed_jobs = jobs
+        self.history_list.clear()
+        for job in jobs[:100]:
+            self.history_list.addItem(
+                f"CUPS 처리 종료  |  {job.job_id}  |  {job.owner}  |  "
+                f"{job.size} bytes  |  {job.submitted}"
+            )
+
+    def _selected_own_job(self) -> PrintJob | None:
+        item = self.job_list.currentItem()
+        if item is None:
+            return None
+        identifier = item.data(Qt.ItemDataRole.UserRole)
+        return next(
+            (job for job in self.current_jobs
+             if job.job_id == identifier and job.owner == getpass.getuser()),
+            None,
+        )
+
+    def _update_queue_actions(self, *_):
+        enabled = self._selected_own_job() is not None
+        self.hold_button.setEnabled(enabled)
+        self.resume_button.setEnabled(enabled)
+        self.cancel_button.setEnabled(enabled)
+
+    def change_selected_job(self, action: str):
+        job = self._selected_own_job()
+        if job is None:
+            return
+        if action not in {"hold", "resume"}:
+            return
+        verb = "보류" if action == "hold" else "재개"
+        answer = QMessageBox.question(
+            self, f"인쇄 작업 {verb}", f"{job.job_id} 작업을 {verb}할까요?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        operation = self.service.hold if action == "hold" else self.service.resume
+        self._background(
+            lambda: operation(job, getpass.getuser()),
+            lambda _: self.refresh_jobs(),
+        )
 
     def choose_file(self):
         extensions = " ".join(f"*{ext}" for ext in sorted(SUPPORTED_EXTENSIONS))
@@ -247,18 +360,19 @@ class MainWindow(QMainWindow):
             self.show_error(message)
 
     def cancel_selected(self):
-        item = self.job_list.currentItem()
-        if not item:
+        job = self._selected_own_job()
+        if job is None:
             return
-        job = next((j for j in self.current_jobs if j.job_id == item.data(Qt.ItemDataRole.UserRole)), None)
-        if not job:
-            return
-        if job.owner != getpass.getuser():
-            self.show_error("다른 사용자의 작업은 취소할 수 없습니다.")
-            return
-        answer = QMessageBox.question(self, "인쇄 작업 취소", f"{job.job_id} 작업을 취소할까요?")
+        answer = QMessageBox.question(
+            self, "인쇄 작업 취소", f"{job.job_id} 작업을 취소할까요?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
         if answer == QMessageBox.StandardButton.Yes:
-            self._background(lambda: self.service.cancel(job, getpass.getuser()), lambda _: self.refresh_jobs())
+            self._background(
+                lambda: self.service.cancel(job, getpass.getuser()),
+                lambda _: self.refresh_jobs(),
+            )
 
 
 def main():
