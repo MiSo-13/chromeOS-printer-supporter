@@ -92,6 +92,22 @@ def validate_registration(registration: Registration) -> None:
         raise PrinterRegistrationError("지원하지 않는 드라이버 방식입니다.")
 
 
+def registration_command(registration: Registration) -> list[str]:
+    """등록 전 확인창과 실제 실행에서 동일한 명령을 사용합니다."""
+    args = [
+        "sudo", "-n", "lpadmin", "-p", registration.name,
+        "-E", "-v", registration.uri,
+        "-o", "printer-is-shared=false",
+    ]
+    if registration.driver == "ppd":
+        args.extend(["-P", str(Path(registration.ppd_path).expanduser())])
+    elif registration.driver == "model":
+        args.extend(["-m", registration.driver_model])
+    else:
+        args.extend(["-m", "everywhere"])
+    return args
+
+
 class DiscoveryService:
     def __init__(
         self,
@@ -149,16 +165,5 @@ class DiscoveryService:
                 raise PrinterRegistrationError(
                     "선택한 CUPS 드라이버가 현재 설치 목록에 없습니다. 다시 조회해 주세요."
                 )
-        command = [
-            "sudo", "-n", "lpadmin", "-p", registration.name,
-            "-E", "-v", registration.uri,
-            "-o", "printer-is-shared=false",
-        ]
-        if registration.driver == "ppd":
-            command.extend(["-P", str(Path(registration.ppd_path).expanduser())])
-        elif registration.driver == "model":
-            command.extend(["-m", registration.driver_model])
-        else:
-            command.extend(["-m", "everywhere"])
-        self._run(command, timeout=60)
+        self._run(registration_command(registration), timeout=60)
         return f"{registration.name} 프린터를 Crostini CUPS에 등록했습니다."
