@@ -30,3 +30,24 @@ def test_pasted_path_and_file_uri(tmp_path):
     unsupported = tmp_path / "script.sh"
     unsupported.write_text("echo test")
     assert local_document_from_text(str(unsupported)) is None
+
+def test_chromeos_uri_list_clipboard(tmp_path):
+    from PyQt6.QtCore import QMimeData
+    from printer_supporter.document_input import local_document_from_mime
+
+    document = tmp_path / "테스트 문서.pdf"
+    document.write_bytes(b"dummy")
+    mime = QMimeData()
+    mime.setData("text/uri-list", (document.as_uri() + "\\r\\n").encode())
+    assert local_document_from_mime(mime) == document
+
+
+def test_gnome_copied_files_clipboard(tmp_path):
+    from PyQt6.QtCore import QMimeData
+    from printer_supporter.document_input import local_document_from_mime
+
+    document = tmp_path / "sample.pdf"
+    document.write_bytes(b"dummy")
+    mime = QMimeData()
+    mime.setData("x-special/gnome-copied-files", ("copy\\n" + document.as_uri()).encode())
+    assert local_document_from_mime(mime) == document
