@@ -290,8 +290,6 @@ class MainWindow(QMainWindow):
         self.printer_box.addItems([p.name for p in printers])
         if previous in [p.name for p in printers]:
             self.printer_box.setCurrentText(previous)
-        elif "Samsung_SL_M2030W" in [p.name for p in printers]:
-            self.printer_box.setCurrentText("Samsung_SL_M2030W")
         self.printer_box.blockSignals(False)
         selected = next((p for p in printers if p.name == self.printer_box.currentText()), None)
         self.selected_printer_status = selected
