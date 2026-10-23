@@ -28,6 +28,8 @@ from PyQt6.QtWidgets import (
 from .backend import CupsService, PrintError, PrintJob, SUPPORTED_EXTENSIONS
 from .capabilities import feature_options
 from .preview import normalize_page_ranges, pdf_page_count, render_pdf_page
+from .settings import SettingsStore
+from .theme import stylesheet_for
 from .setup_ui import PrinterSetupWidget
 from .dependencies import CUPS, LIBREOFFICE, DependencyManager
 
@@ -65,16 +67,26 @@ class MainWindow(QMainWindow):
         self.option_keys: dict[str, str] = {}
         self.setWindowTitle("PrintHub")
         self.resize(1000, 760)
-        from .theme import APP_STYLESHEET
-        self.setStyleSheet(APP_STYLESHEET)
+        self.settings = SettingsStore()
+        self.setStyleSheet(stylesheet_for(self.settings.data["theme"]))
 
         root = QWidget()
         layout = QVBoxLayout(root)
         self.setCentralWidget(root)
 
         heading = QLabel("PrintHub")
-        heading.setStyleSheet("font-size: 22px; font-weight: 650; color: #182e48; padding: 5px 0;")
-        layout.addWidget(heading)
+        heading.setStyleSheet("font-size: 22px; font-weight: 650; padding: 5px 0;")
+        header = QHBoxLayout()
+        header.addWidget(heading)
+        header.addStretch()
+        header.addWidget(QLabel("테마"))
+        self.theme_box = QComboBox()
+        self.theme_box.addItem("라이트", "light")
+        self.theme_box.addItem("다크", "dark")
+        self.theme_box.setCurrentIndex(1 if self.settings.data["theme"] == "dark" else 0)
+        self.theme_box.currentIndexChanged.connect(self._change_theme)
+        header.addWidget(self.theme_box)
+        layout.addLayout(header)
         self.status = QLabel("프린터 연결 확인 중…")
         layout.addWidget(self.status)
 
@@ -137,7 +149,7 @@ class MainWindow(QMainWindow):
         self.preview_label = QLabel("PDF 파일을 선택하면 미리보기가 표시됩니다.")
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setMinimumHeight(370)
-        self.preview_label.setStyleSheet("background: #f0f2f5; border-radius: 6px; color: #64717e;")
+        self.preview_label.setObjectName("previewCanvas")
         preview_layout.addWidget(self.preview_label)
         navigation = QHBoxLayout()
         self.prev_page = QPushButton("이전")
@@ -198,7 +210,7 @@ class MainWindow(QMainWindow):
         settings_layout.addWidget(self.option_info)
         print_actions = QHBoxLayout()
         self.print_button = QPushButton("인쇄")
-        self.print_button.setStyleSheet("background: #225e9e; color: white; border: none; font-weight: 600; padding: 10px 22px;")
+        self.print_button.setObjectName("primaryButton")
         self.print_button.clicked.connect(self.print_selected)
         print_actions.addWidget(self.print_button)
         self.test_page_button = QPushButton("테스트 페이지 인쇄")
@@ -261,6 +273,15 @@ class MainWindow(QMainWindow):
         self.timer.start()
         self.refresh_all()
         QTimer.singleShot(100, lambda: self.check_dependencies(required_only=True))
+
+    def _change_theme(self, index: int):
+        theme = self.theme_box.itemData(index)
+        try:
+            self.settings.set_theme(theme)
+        except OSError as exc:
+            self.show_error(f"테마 설정 저장 실패: {exc}")
+            return
+        self.setStyleSheet(stylesheet_for(theme))
 
     def _switch_page(self, index: int):
         self.centralWidget().findChild(QStackedWidget).setCurrentIndex(index)
