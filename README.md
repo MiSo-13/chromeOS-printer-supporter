@@ -6,11 +6,21 @@ ChromeOS **Linux 개발 환경(Crostini)**에서 문서를 인쇄하고 CUPS 프
 
 Chromebook에서 **설정 → 개발자 → Linux 개발 환경**을 활성화하세요.
 
-1. [최신 릴리즈](https://github.com/MiSo-13/chromeOS-printer-supporter/releases)에서 Chromebook CPU에 맞는 `.deb` 파일을 받습니다.
-   - Intel/AMD Chromebook: `amd64.deb`
-   - ARM Chromebook: `arm64.deb`
-2. ChromeOS **파일 앱**에서 다운로드한 `.deb` 파일을 열어 **Linux에 설치**합니다.
-3. 앱 런처의 **Linux 앱 → ChromeOS 프린터 지원**을 선택합니다. **Python이나 터미널을 실행할 필요가 없습니다.**
+1. [최신 릴리즈](https://github.com/MiSo-13/chromeOS-printer-supporter/releases)에서 CPU에 맞는 `.deb` 파일을 받습니다. 터미널에서 `dpkg --print-architecture`로 확인할 수 있습니다.
+   - Intel/AMD: `chromeos-printer-supporter_0.1.0_amd64.deb`
+   - ARM: `chromeos-printer-supporter_0.1.0_arm64.deb`
+2. ChromeOS **파일 앱 → 다운로드**에서 설치 파일을 **Linux 파일** 폴더로 복사합니다.
+3. **터미널 → Penguin**에서 아래 명령어를 실행합니다(예: Intel/AMD).
+   
+   ```bash
+   sudo apt update
+   sudo apt install ./chromeos-printer-supporter_0.1.0_amd64.deb
+   ```
+   
+   ARM Chromebook이면 파일명의 `amd64`를 `arm64`로 바꿉니다.
+4. 설치 후 앱 런처의 **Linux 앱 → ChromeOS 프린터 지원**을 누릅니다. **실행할 때 Python이나 터미널을 열 필요는 없습니다.**
+
+ChromeOS 147부터 파일 앱의 Debian 패키지 설치 기능은 지원 중단되었습니다. 처음 설치할 때는 터미널을 사용해야 합니다. [ChromeOS 공식 안내](https://developers.google.com/chromeos/app-development/develop/news)
 
 Crostini(Debian 12 이상 호환 환경)가 필요하며 ChromeOS 자체 앱은 아닙니다. LibreOffice는 Office 미리보기·인쇄 시 필요할 수 있습니다.
 
