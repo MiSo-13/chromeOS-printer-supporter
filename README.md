@@ -1,64 +1,54 @@
 # ChromeOS Printer Supporter
 
-ChromeOS **Linux 개발 환경(Crostini)**에서 문서를 인쇄하고 CUPS 프린터를 관리하는 앱입니다. ChromeOS 브라우저의 인쇄 메뉴(Ctrl+P)를 대체하지는 않습니다.
+Chromebook의 Linux 환경에서 프린터를 연결하고 문서를 인쇄하는 앱입니다.
 
 ## 설치
 
-Chromebook에서 **설정 → 개발자 → Linux 개발 환경**을 활성화하세요.
+먼저 Chromebook에서 **설정 → 개발자 → Linux 개발 환경**을 켜 주세요.
 
-1. [최신 릴리즈](https://github.com/MiSo-13/chromeOS-printer-supporter/releases)에서 CPU에 맞는 `.deb` 파일을 받습니다. 터미널에서 `dpkg --print-architecture`로 확인할 수 있습니다.
-   - Intel/AMD: `chromeos-printer-supporter_0.1.0_amd64.deb`
-   - ARM: `chromeos-printer-supporter_0.1.0_arm64.deb`
-2. ChromeOS **파일 앱 → 다운로드**에서 설치 파일을 **Linux 파일** 폴더로 복사합니다.
-3. **터미널 → Penguin**에서 아래 명령어를 실행합니다(예: Intel/AMD).
-   
+1. [Releases](https://github.com/MiSo-13/chromeOS-printer-supporter/releases)에서 설치 파일을 내려받습니다.
+   - Intel/AMD Chromebook: `chromeos-printer-supporter_0.1.0_amd64.deb`
+   - ARM Chromebook: `chromeos-printer-supporter_0.1.0_arm64.deb`
+   - 잘 모르겠다면 Linux 터미널에서 `dpkg --print-architecture`로 확인할 수 있습니다.
+2. **파일 앱 → 다운로드**에서 받은 파일을 **Linux 파일** 폴더로 복사합니다.
+3. **터미널 → Penguin**을 열어 설치합니다. Intel/AMD 기준 명령어입니다.
+
    ```bash
    sudo apt update
    sudo apt install ./chromeos-printer-supporter_0.1.0_amd64.deb
    ```
-   
-   ARM Chromebook이면 파일명의 `amd64`를 `arm64`로 바꿉니다.
-4. 설치 후 앱 런처의 **Linux 앱 → ChromeOS 프린터 지원**을 누릅니다. **실행할 때 Python이나 터미널을 열 필요는 없습니다.**
 
-ChromeOS 147부터 파일 앱의 Debian 패키지 설치 기능은 지원 중단되었습니다. 처음 설치할 때는 터미널을 사용해야 합니다. [ChromeOS 공식 안내](https://developers.google.com/chromeos/app-development/develop/news)
+   ARM 기기는 파일명의 `amd64`를 `arm64`로 바꿔 입력하세요. 새 버전을 받았다면 파일명에 맞게 버전도 변경하면 됩니다.
+4. 설치가 끝나면 앱 런처의 **Linux 앱 → ChromeOS 프린터 지원**에서 실행합니다.
 
-Crostini(Debian 12 이상 호환 환경)가 필요하며 ChromeOS 자체 앱은 아닙니다. LibreOffice는 Office 미리보기·인쇄 시 필요할 수 있습니다.
+ChromeOS의 파일 앱에서는 `.deb` 파일을 직접 설치할 수 없는 버전이 있습니다. **처음 설치할 때만 터미널을 사용**하며, 이후에는 아이콘으로 실행할 수 있습니다.
 
-개발용 소스 설치는 `bash install.sh` 후 `.venv/bin/chromeos-printer-supporter`를 실행하세요.
+## 인쇄하기
 
-## 사용 방법
+1. **문서 인쇄**에서 프린터를 고릅니다.
+2. **파일 → 문서 열기**(`Ctrl+O`)로 문서를 선택합니다. 파일을 끌어놓거나 `Ctrl+V`로 경로를 붙여넣어도 됩니다.
+3. 미리보기와 인쇄 매수 등을 확인한 후 **인쇄**를 누릅니다.
+4. **인쇄 대기열**에서 진행 상태를 확인합니다.
 
-1. **프린터 선택:** 이미 등록된 프린터를 선택하거나 **프린터 추가**에서 검색합니다. 검색되지 않으면 IP 주소를 직접 입력하세요.
-2. **문서 선택:** **파일 → 문서 열기**(`Ctrl+O`), 드래그 앤 드롭 또는 파일 복사 후 `Ctrl+V`를 사용합니다.
-3. **미리보기·설정:** 페이지, 인쇄 매수, 용지 등 필요한 항목을 확인합니다.
-4. **인쇄:** **인쇄**를 누르면 접수 상태가 표시됩니다. 진행 상황은 **인쇄 대기열**에서 확인할 수 있습니다.
+프린터가 목록에 없다면 [프린터 연결 방법](docs/PRINTER_SETUP.md)을 참고하세요.
 
-**설정 → 화면 테마**에서 라이트·다크 모드를 변경합니다. 메뉴바는 창 맨 위에 있습니다.
+**파일 형식:** PDF, TXT, PNG/JPEG/GIF/TIFF, Word, Excel, PowerPoint, ODF, RTF
 
-[처음 프린터 연결하기](docs/PRINTER_SETUP.md)
-
-## 지원 문서
-
-- **PDF · TXT · 이미지:** PDF, TXT, PNG, JPG/JPEG, GIF, TIFF
-- **Office:** DOC/DOCX, XLS/XLSX, PPT/PPTX, ODT/ODS/ODP, RTF — LibreOffice 필요
-
-미리보기는 인쇄 전에 내용을 확인하는 기능이며 원본 문서를 수정하지 않습니다. Chromebook에서 파일 드롭/복사가 되지 않으면 **문서 선택** 버튼을 사용하세요.
+Office 문서의 미리보기와 인쇄에는 **LibreOffice**가 필요합니다.
 
 ## 프린터 호환성
 
-특정 제조사 전용 앱이 아닙니다. **IPP Everywhere, 설치된 CUPS 드라이버, PPD 파일**을 이용해 다양한 네트워크 프린터를 연결할 수 있습니다.
+특정 제조사 전용 앱이 아닙니다. **IPP Everywhere**, 설치된 **CUPS 드라이버**, **PPD** 파일을 사용해 다양한 네트워크 프린터 연결을 시도할 수 있습니다. **목록에 없는 프린터도** 검색하고 추가할 수 있습니다.
 
-프린터 모델과 Crostini 연결 환경에 따라 실제 사용 가능 여부는 달라집니다. 일부 모델은 드라이버 설치 경로를 추가로 안내하지만, **목록에 없는 프린터도 검색·연결할 수 있습니다.**
+다만 프린터와 Linux 환경에 따라 실제 인쇄 가능 여부는 다릅니다. [프린터 호환성과 우선 안내 모델](docs/SUPPORTED_PRINTERS.md)을 참고하세요.
 
-프린터 등록과 패키지 설치 전에는 작업 내용을 확인하고 승인해야 합니다.
+## 자주 묻는 문제
 
-[프린터 호환성 및 우선 안내 모델](docs/SUPPORTED_PRINTERS.md)
+- **프린터가 안 보여요:** **프린터 추가**에서 IP 주소로 연결해 보세요.
+- **인쇄가 안 돼요:** 앱의 **프린터 상태**와 **인쇄 대기열**에서 오류를 확인하세요.
+- **Office 문서가 안 열려요:** LibreOffice가 설치돼 있는지 확인하세요.
+- **설정 파일이 없어요:** `설정 → 화면 테마`에서 테마를 변경하면 `~/.config/chromeos-printer-supporter/settings.json`이 생성됩니다. 설치 직후에는 없을 수 있습니다.
 
-## 문제 해결
+앱을 제거하려면 Linux 터미널에서 `sudo apt remove chromeos-printer-supporter`를 실행하세요.
 
-- 프린터가 검색되지 않음: 프린터 IP로 직접 추가하거나 Crostini의 네트워크·CUPS 연결을 확인하세요.
-- Office 미리보기가 안 됨: LibreOffice 설치 여부를 확인하세요.
-- 드라이버가 없음: 프린터 추가 화면의 공식 제조사 지원 링크나 PPD 파일을 이용하세요.
-- 인쇄가 안 됨: **프린터 상태**와 **인쇄 대기열**에서 오류를 확인하세요.
-
-개발 테스트: `python -m pip install -e '.[test]'` 다음 `pytest -q`
+개발·배포 절차는 [릴리즈 안내](docs/RELEASE.md)에 정리했습니다.
