@@ -37,8 +37,8 @@ FOCUS_PRINTERS: tuple[FocusPrinter, ...] = (
         "Samsung", "SL-M2030W", "vendor-manual",
         "제조사 공식 Linux 드라이버 다운로드 안내",
         SAMSUNG_M2030W_SUPPORT,
-        "삼성 공식 지원 페이지에서 Linux 드라이버/아키텍처를 확인하세요. "
-        "자동 다운로드나 제조사 설치 스크립트 실행은 제공하지 않습니다.",
+        "x86_64에서는 삼성 공식 ZIP을 SHA-256으로 검증해 승인 후 다운로드·설치할 수 있습니다. "
+        "ARM은 지원되지 않으며 제조사 설치 스크립트는 실행하지 않습니다.",
     ),
     FocusPrinter(
         "Brother", "HL-L2340D series", "distro-package",
