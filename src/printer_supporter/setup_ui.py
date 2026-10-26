@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import re
 import shlex
+from dataclasses import replace
 
 from PyQt6.QtCore import QThreadPool, Qt, QUrl
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+    QInputDialog,
     QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
@@ -128,6 +130,13 @@ class PrinterSetupWidget(QWidget):
         self.identify_button.setEnabled(False)
         self.identify_button.clicked.connect(self.identify_current)
         details_layout.addWidget(self.identify_button)
+        self.confirm_model_button = QPushButton("모델 직접 확인")
+        self.confirm_model_button.setEnabled(False)
+        self.confirm_model_button.setToolTip(
+            "IPP 모델 정보를 읽지 못했을 때 기기에 적힌 모델명을 직접 선택합니다."
+        )
+        self.confirm_model_button.clicked.connect(self.confirm_samsung_model)
+        details_layout.addWidget(self.confirm_model_button)
         self.details_toggle = QPushButton("상세 정보 보기")
         self.details_toggle.setCheckable(True)
         self.details_toggle.toggled.connect(self._toggle_details)
@@ -400,6 +409,10 @@ class PrinterSetupWidget(QWidget):
             return
         self.identify_button.setEnabled(True)
         self.identity_result = identity
+        self.confirm_model_button.setEnabled(
+            identity.source != "IPP 장치 응답"
+            and identity.source != "사용자 확인(명시적 선택)"
+        )
         self.identity_summary.setText(
             f"{identity.name} · {identity.manufacturer or '제조사 미확인'}"
         )
@@ -669,6 +682,43 @@ class PrinterSetupWidget(QWidget):
         )
         if self.install_plan is not None:
             self._refresh_driver_resolution()
+
+    def confirm_samsung_model(self):
+        """IPP 조회가 안 되는 Socket 장치는 사용자 확인만으로 명시적 모델 지정."""
+        device = self.current_device
+        current = self.identity_result
+        if (
+            device is None or current is None
+            or current.source in {"IPP 장치 응답", "사용자 확인(명시적 선택)"}
+        ):
+            return
+        name, selected = QInputDialog.getItem(
+            self, "프린터 모델 직접 확인", "실제 기기에 표시된 모델을 선택하세요.",
+            ["Samsung SL-M2030W"], 0, False,
+        )
+        if not selected or name != "Samsung SL-M2030W":
+            return
+        if not confirm_action(
+            self, title="프린터 모델 확인",
+            summary="기기에 표시된 모델이 Samsung SL-M2030W인가요?",
+            details=(
+                f"검색된 이름: {device.name}\n"
+                f"연결 URI: {device.uri}\n"
+                "선택한 모델: Samsung SL-M2030W\n\n"
+                "프린터가 실제 IPP 응답으로 모델을 확인해 주지 못했습니다. "
+                "제품에 적힌 모델명을 직접 확인한 경우에만 계속하세요. "
+                "이 단계에서 다운로드나 설치는 하지 않습니다."
+            ),
+            confirm_label="이 모델이 맞습니다",
+        ):
+            return
+        self.identity_generation += 1
+        confirmed = replace(
+            current, name="Samsung SL-M2030W",
+            manufacturer="Samsung", model="SL-M2030W",
+            source="사용자 확인(명시적 선택)", driverless="unknown",
+        )
+        self._identity_ready((self.identity_generation, device, confirmed))
 
     def _identity_failed(self, generation: int, device: DiscoveredPrinter, message: str):
         if generation == self.identity_generation and self.current_device == device:
