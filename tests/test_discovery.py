@@ -35,6 +35,45 @@ def test_manual_ip_builds_expected_uri():
     )
 
 
+@pytest.mark.parametrize("ip,protocol,path,port,expected", [
+    ("192.168.6.147", "ipp", "/ipp/printer", None,
+     "ipp://192.168.6.147/ipp/printer"),
+    ("192.168.6.147", "ipps", "/printers/Office", "443",
+     "ipps://192.168.6.147:443/printers/Office"),
+    ("2001:db8::147", "ipps", "/ipp/print", None,
+     "ipps://[2001:db8::147]/ipp/print"),
+    ("192.168.6.147", "socket", "/ignored", "9101",
+     "socket://192.168.6.147:9101"),
+])
+def test_manual_connection_supports_standard_ipp_paths_and_ip_versions(
+    ip, protocol, path, port, expected,
+):
+    printer = manual_printer(ip, protocol=protocol, path=path, port=port)
+    assert printer.uri == expected
+    assert printer.scheme == protocol
+
+
+@pytest.mark.parametrize("port", ["0", "65536", "631?x=y", "-1", "abc", "６３１", "9" * 100])
+def test_manual_port_rejects_unsafe_values(port):
+    with pytest.raises(PrinterRegistrationError, match="포트"):
+        manual_printer("192.168.6.147", protocol="ipps", port=port)
+
+
+@pytest.mark.parametrize("path", ["", "//evil", "/../ipp", "/./print",
+                                   "/ipp?version=1.1", "/ipp#x", "/ipp print",
+                                   "/ipp\\print", "/ipp%ZZ", "/" + "x" * 256])
+def test_manual_ipp_path_requires_safe_absolute_resource(path):
+    with pytest.raises(PrinterRegistrationError, match="IPP 경로"):
+        manual_printer("192.168.6.147", protocol="ipp", path=path)
+
+
+@pytest.mark.parametrize("ip", ["::1", "ff02::1", "fe80::1", "fe80::1%eth0",
+                                     "::ffff:127.0.0.1"])
+def test_manual_ipv6_rejects_loopback_multicast_and_scoped_addresses(ip):
+    with pytest.raises(PrinterRegistrationError):
+        manual_printer(ip, protocol="ipps")
+
+
 @pytest.mark.parametrize("ip", ["bad-host", "127.0.0.1", "224.0.0.1", "::1"])
 def test_manual_ip_rejects_unsupported_address(ip):
     with pytest.raises(PrinterRegistrationError):
@@ -58,6 +97,36 @@ def test_registration_needs_explicit_approval():
     service = DiscoveryService(runner=lambda *a, **k: pytest.fail("실행하면 안 됩니다"))
     with pytest.raises(PrinterRegistrationError, match="사용자 확인"):
         service.register(Registration("Printer_1", "ipp://192.168.6.147/ipp/print"))
+
+
+def test_manual_ipps_registration_still_requires_separate_approval():
+    printer = manual_printer(
+        "192.168.6.147", protocol="ipps", path="/printers/Office", port="443",
+    )
+    commands = []
+    service = DiscoveryService(runner=lambda command, **kwargs: commands.append(command))
+    with pytest.raises(PrinterRegistrationError, match="사용자 확인"):
+        service.register(Registration("Printer_1", printer.uri))
+    assert commands == []
+    validate_registration(Registration("Printer_1", printer.uri))
+
+
+def test_ipps_tcp_probe_does_not_claim_tls_or_printing_success():
+    connected = []
+
+    class FakeSocket:
+        def close(self):
+            connected.append("closed")
+
+    def connector(address, timeout):
+        connected.append((address, timeout))
+        return FakeSocket()
+
+    service = DiscoveryService(connector=connector)
+    printer = manual_printer("192.168.6.147", protocol="ipps", port="443")
+    result = service.probe(printer)
+    assert connected == [(("192.168.6.147", 443), 3), "closed"]
+    assert "TCP" in result and "TLS" in result and "별도" in result
 
 
 def test_existing_queue_is_not_overwritten():
