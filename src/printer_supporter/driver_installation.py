@@ -39,7 +39,7 @@ from .driver_package_catalog import (
 ALLOWLIST = {
     "printer-driver-brlaser": "Brother",
     "printer-driver-splix": ("Samsung", "Xerox", "Dell", "Lexmark"),
-    "printer-driver-foo2zjs": ("HP", "Minolta"),
+    "printer-driver-foo2zjs": ("HP", "Minolta", "Konica Minolta"),
     "printer-driver-gutenprint": ("Epson", "Canon"),
 }
 
