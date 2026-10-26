@@ -51,7 +51,10 @@ def test_samsung_specific_official_linux_download_link_and_no_apt(tmp_path):
     service, calls = make_service(tmp_path)
     plan = service.plan(samsung)
     assert plan.support_url == SAMSUNG_SL_M2030W
-    assert plan.package is None and not plan.can_install
+    assert plan.package == "samsung-uld-m2030w"
+    assert plan.source_kind == "samsung-uld"
+    assert plan.download_sha256 is not None
+    assert plan.package_status in {"available", "unavailable"}
     assert not calls
 
 
