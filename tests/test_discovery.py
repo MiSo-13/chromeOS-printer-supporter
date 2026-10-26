@@ -245,6 +245,33 @@ def test_existing_direct_ipp_uri_skips_duplicate_discovery():
     assert calls == [["lpinfo", "-v"]]
 
 
+def test_mixed_direct_ipp_and_dnssd_still_resolves_other_printers():
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        if command == ["lpinfo", "-v"]:
+            return CompletedProcess(command, 0, (
+                "network ipp://first.local/ipp/print\n"
+                "network dnssd://Second._ipp._tcp.local/\n"
+            ), "")
+        return CompletedProcess(command, 0, (
+            "ipp://first.local/ipp/print\n"
+            "ipps://second.local/ipp/print\n"
+        ), "")
+
+    devices = DiscoveryService(runner=runner, which=lambda _: "ippfind").discover()
+    assert {item.uri for item in devices} == {
+        "ipp://first.local/ipp/print",
+        "dnssd://Second._ipp._tcp.local/",
+        "ipps://second.local/ipp/print",
+    }
+    assert calls == [
+        ["lpinfo", "-v"],
+        ["ippfind", "-T", "2", "_ipp._tcp", "_ipps._tcp", "--print"],
+    ]
+
+
 def test_missing_optional_discovery_tool_keeps_cups_results():
     calls = []
 

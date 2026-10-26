@@ -123,6 +123,26 @@ def test_unknown_model_never_matches_generic_installed_drivers():
     assert not advice.installed_matches
 
 
+def test_unknown_brand_ipp_name_offers_exact_cups_choice_without_auto_selection():
+    installed = (
+        InstalledDriver("drv:///acme.ppd", "Acme Laser 42"),
+        InstalledDriver("drv:///near.ppd", "Acme Laser 420"),
+    )
+    unknown = make_identity(
+        name="Acme Laser 42", manufacturer=None, model=None,
+    )
+    advice = recommend_drivers(device(), unknown, installed)
+    assert advice.installed_matches == (installed[0],)
+    assert advice.preferred is None and advice.preferred_model is None
+    assert "직접 선택" in advice.message
+
+    unverified = make_identity(
+        name="Acme Laser 42", manufacturer=None, model=None,
+        source="검색된 이름(미검증)",
+    )
+    assert not recommend_drivers(device(), unverified, installed).installed_matches
+
+
 def test_catalog_reads_only_lpinfo_m():
     calls = []
     def runner(command, **kwargs):

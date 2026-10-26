@@ -81,7 +81,12 @@ def _exact_model_match(expected: str, label: str) -> bool:
 def matching_installed_drivers(
     identity: PrinterIdentity, installed: tuple[InstalledDriver, ...]
 ) -> tuple[InstalledDriver, ...]:
-    if not identity.manufacturer or not identity.model:
+    # 인식 목록 밖의 제조사도 IPP가 직접 제공한 전체 모델명으로 CUPS를 조회합니다.
+    # 검색 서비스의 미검증 이름만으로는 제조사 불명의 후보를 만들지 않습니다.
+    if not (identity.manufacturer and identity.model) and (
+        identity.source != "IPP 장치 응답"
+        or identity.name.casefold() in {"모델 미확인", "generic printer", "unknown printer"}
+    ):
         return ()
     # 모델 이름이 실제 IPP 속성에서 왔는지 여부는 UI 자동 적용 판단에 사용합니다.
     expected = identity.name
@@ -117,7 +122,7 @@ def recommend_drivers(
             "인쇄 성공을 보장하지 않으며 실패 시 설치된 CUPS 모델이나 제조사 드라이버를 확인하세요.",
             catalog_status, verified,
         )
-    if verified and len(matches) == 1:
+    if verified and identity.manufacturer and identity.model and len(matches) == 1:
         return DriverRecommendation(
             "model", matches[0].model_id, matches,
             "IPP 장치가 보고한 모델명과 설치된 CUPS 드라이버 설명이 일치합니다. "
@@ -129,6 +134,14 @@ def recommend_drivers(
             None, None, matches,
             "동일한 모델명의 설치된 드라이버가 여러 개 있습니다. "
             "잘못된 드라이버를 자동 선택하지 않으니 목록을 직접 확인하세요.",
+            catalog_status, True,
+        )
+    if verified and matches and not (identity.manufacturer and identity.model):
+        return DriverRecommendation(
+            None, None, matches,
+            "IPP 응답의 모델명과 동일한 CUPS 드라이버 후보를 찾았습니다. "
+            "제조사·모델을 분리해 검증할 수 없으므로 자동 선택하지 않습니다. "
+            "실제 제품 라벨과 일치하는지 확인한 후 직접 선택하세요.",
             catalog_status, True,
         )
     if matches:

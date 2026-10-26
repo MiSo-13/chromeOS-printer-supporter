@@ -30,6 +30,65 @@ Read printer identity [PASS]
     assert "operation-required" not in parsed
 
 
+def test_ieee1284_device_id_identifies_unlisted_manufacturer_without_download():
+    """제조사 하드코딩 없이 IPP의 MFG/MDL만으로 표시 가능한 모델을 식별."""
+    printer = device("ipp://printer.local/ipp/print", name="printer.local")
+    raw = (
+        "printer-device-id (textWithoutLanguage) = "
+        "MFG:Zebra Technologies;MDL:ZD421;CMD:ZPL,PDF;SN:private\n"
+    )
+    parsed = parse_ipp_attributes(raw)
+    assert parsed["printer-device-id"] == (
+        "MFG:Zebra Technologies;MDL:ZD421;CMD:ZPL,PDF;SN:private",
+    )
+    identified = identity_from_attributes(printer, parsed)
+    assert identified.name == "Zebra Technologies ZD421"
+    assert identified.manufacturer == "Zebra Technologies"
+    assert identified.model == "ZD421"
+    assert identified.source == "IPP 장치 응답"
+    assert "private" not in identified.name
+
+
+def test_make_model_with_vendor_comma_is_not_split():
+    parsed = parse_ipp_attributes(
+        "printer-make-and-model (textWithoutLanguage) = Acme, Inc. Laser 42\n"
+    )
+    assert parsed["printer-make-and-model"] == ("Acme, Inc. Laser 42",)
+
+
+def test_ieee1284_device_id_only_refines_matching_reported_model():
+    printer = device("ipp://printer.local/ipp/print", name="Unknown")
+    matching = identity_from_attributes(printer, {
+        "printer-make-and-model": ("Acme Laser 42",),
+        "printer-device-id": ("MANUFACTURER:Acme;MODEL:Laser 42;",),
+    })
+    assert (matching.manufacturer, matching.model) == ("Acme", "Laser 42")
+
+    conflicting = identity_from_attributes(printer, {
+        "printer-make-and-model": ("Acme Laser 42",),
+        "printer-device-id": ("MFG:Other;MDL:Ink 99;",),
+    })
+    assert conflicting.name == "Acme Laser 42"
+    assert conflicting.manufacturer is None and conflicting.model is None
+
+
+def test_device_id_requires_both_bounded_fields():
+    printer = device("ipp://printer.local/ipp/print", name="printer.local")
+    for raw in ("MFG:Acme;", "MDL:Laser 42;", "MFG:Acme;MDL:bad\x01model;",
+                f"MFG:{'x' * 200};MDL:Laser 42;"):
+        result = identity_from_attributes(printer, {"printer-device-id": (raw,)})
+        assert result.manufacturer is None
+        assert result.source != "IPP 장치 응답"
+
+
+def test_ipp_parser_bounds_large_and_noisy_device_output():
+    output = "printer-name (nameWithoutLanguage) = ignored\n" * 512
+    output += "printer-device-id (textWithoutLanguage) = MFG:Acme;MDL:Laser 42;\n"
+    assert "printer-device-id" not in parse_ipp_attributes(output)
+    giant = "printer-device-id (textWithoutLanguage) = " + "X" * 6000
+    assert "printer-device-id" not in parse_ipp_attributes(giant)
+
+
 def test_identify_ipp_reads_model_and_ipp_everywhere_without_printing():
     calls = []
     script_paths = []
@@ -40,6 +99,7 @@ def test_identify_ipp_reads_model_and_ipp_everywhere_without_printing():
         script_paths.append(script)
         assert script.is_file()
         assert "OPERATION Get-Printer-Attributes" in script.read_text()
+        assert "printer-device-id" in script.read_text()
         assert "Print-Job" not in script.read_text()
         assert "lpadmin" not in script.read_text()
         return CompletedProcess(
