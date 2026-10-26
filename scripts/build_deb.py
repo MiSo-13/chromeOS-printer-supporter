@@ -22,6 +22,7 @@ DEPENDENCIES = (
     "libc6 (>= 2.35)",
     "cups",
     "cups-client",
+    "cups-ipp-utils",
     "libegl1",
     "libgl1",
     "libopengl0",
@@ -100,7 +101,7 @@ def create_deb(bundle: Path, output_dir: Path, architecture: str) -> Path:
             f"Maintainer: MiSo-13 <72727535+MiSo-13@users.noreply.github.com>\n"
             f"Homepage: https://github.com/MiSo-13/chromeOS-printer-supporter\n"
             f"Depends: {', '.join(DEPENDENCIES)}\n"
-            "Suggests: libreoffice, cups-ipp-utils\n"
+            "Suggests: libreoffice\n"
             "Description: CUPS printer support for ChromeOS Linux (Crostini)\n"
             " Open documents, preview, and manage printers from the Linux app launcher.\n"
         )
