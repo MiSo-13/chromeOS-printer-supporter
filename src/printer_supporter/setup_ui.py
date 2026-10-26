@@ -30,7 +30,7 @@ from .driver_installation import (
 )
 
 
-from .tasks import BackgroundTask as Worker, TaskSignals as WorkerSignals
+from .tasks import BackgroundTask as Worker
 
 
 class PrinterSetupWidget(QWidget):
@@ -43,7 +43,10 @@ class PrinterSetupWidget(QWidget):
         self.identifier = identifier or identify_printer
         self.advisor = advisor or DriverAdvisor()
         self.installer = installer or DriverInstallService()
-        self.pool = QThreadPool.globalInstance()
+        # 프린터 한 대를 확인할 때 IPP·CUPS·APT 조회가 과도하게 병렬 실행되지 않게 합니다.
+        self.pool = QThreadPool(self)
+        self.pool.setMaxThreadCount(2)
+        self.pool.setExpiryTimeout(1000)
         self.current_device: DiscoveredPrinter | None = None
         self.identity_result: PrinterIdentity | None = None
         self.driver_recommendation: DriverRecommendation | None = None
@@ -55,6 +58,7 @@ class PrinterSetupWidget(QWidget):
         self._search_info_seen = False
         self._scan_busy = False
         self._register_busy = False
+        self._auto_select_search_result = True
         self._recovery_issue: str | None = None
         self._recovery_error = ""
 
@@ -94,8 +98,31 @@ class PrinterSetupWidget(QWidget):
         self.scan_button = QPushButton("프린터 검색")
         self.scan_button.clicked.connect(self.search)
         scan_row.addWidget(self.scan_button)
+        self.discovery_help_button = QPushButton("프린터가 안 보여요")
+        self.discovery_help_button.setCheckable(True)
+        self.discovery_help_button.toggled.connect(self._toggle_discovery_help)
+        scan_row.addWidget(self.discovery_help_button)
         scan_row.addStretch()
         discovery_layout.addLayout(scan_row)
+
+        self.discovery_help = QGroupBox("프린터·모델·IP 주소 확인")
+        self.discovery_help.setObjectName("printerDiscoveryHelp")
+        help_layout = QVBoxLayout(self.discovery_help)
+        self.discovery_help_text = QLabel(
+            "1. 프린터가 켜져 있는지, Chromebook과 같은 네트워크에 연결됐는지 확인하세요.\n"
+            "2. 프린터 앞면 또는 뒷면의 제품 라벨에서 제조사와 모델명을 확인하세요.\n"
+            "3. 프린터의 네트워크 설정 화면이나 네트워크 정보 출력물에서 IPv4 주소를 확인하세요.\n"
+            "4. Chromebook 설정의 프린터 목록 또는 공유기 연결 장치 목록에서도 확인할 수 있습니다.\n"
+            "5. IP 주소를 알았다면 아래에 입력하고 IPP 연결부터 시도하세요. "
+            "프린터에 따라 IPP 주소 경로가 달라질 수 있습니다.\n"
+            "ChromeOS에 등록된 프린터가 Linux(Crostini)에서 자동으로 보이는 것은 아닙니다. "
+            "USB 연결 프린터는 Linux의 장치 접근 권한도 필요할 수 있습니다."
+        )
+        self.discovery_help_text.setWordWrap(True)
+        self.discovery_help_text.setTextFormat(Qt.TextFormat.PlainText)
+        help_layout.addWidget(self.discovery_help_text)
+        self.discovery_help.hide()
+        discovery_layout.addWidget(self.discovery_help)
 
         self.devices = QListWidget()
         self.devices.currentItemChanged.connect(self._select_discovered)
@@ -385,6 +412,9 @@ class PrinterSetupWidget(QWidget):
             "프린터 등록을 별도로 승인해 주세요."
         )
 
+    def _toggle_discovery_help(self, expanded: bool):
+        self.discovery_help.setVisible(expanded)
+
     def _toggle_details(self, expanded: bool):
         for label in self._optional_details:
             label.setVisible(expanded)
@@ -426,6 +456,7 @@ class PrinterSetupWidget(QWidget):
     def _search_failed(self, message: str):
         self._scan_busy = False
         self.scan_button.setEnabled(True)
+        self.discovery_help_button.setChecked(True)
         if "forbidden" in message.lower() or "not authorized" in message.lower():
             self.status.setText(
                 "CUPS가 네트워크 검색(lpinfo)을 거부했습니다. "
@@ -442,9 +473,9 @@ class PrinterSetupWidget(QWidget):
                 self, title="프린터 검색",
                 summary="같은 네트워크에서 프린터를 찾습니다.",
                 details=(
-                    "실행 명령: lpinfo -v\n\n"
+                    "실행 명령: lpinfo -v (필요 시 ippfind -T 2 보조 검색)\n\n"
                     "변경 사항: 없음\n"
-                    "Linux(Crostini)의 CUPS 장치 검색 결과를 읽습니다.\n"
+                    "Linux(Crostini)의 CUPS 및 DNS-SD 발견 결과를 읽습니다.\n"
                     "프린터 등록, 드라이버 설치, 다운로드, 인쇄는 하지 않습니다.\n"
                     "검색이 안 되면 IP 주소를 직접 입력할 수 있습니다."
                 ),
@@ -453,6 +484,7 @@ class PrinterSetupWidget(QWidget):
                 return
             self._search_info_seen = True
         self._scan_busy = True
+        self._auto_select_search_result = True
         self.scan_button.setEnabled(False)
         self.status.setText("프린터 검색 중…")
         worker = Worker(self.service.discover)
@@ -468,11 +500,13 @@ class PrinterSetupWidget(QWidget):
             item = QListWidgetItem(f"{device.name}  ·  {device.scheme}")
             item.setData(Qt.ItemDataRole.UserRole, device)
             self.devices.addItem(item)
-        if len(devices) == 1:
+        if len(devices) == 1 and self._auto_select_search_result:
             self.devices.setCurrentRow(0)
+        if not devices:
+            self.discovery_help_button.setChecked(True)
         self.status.setText(
             f"{len(devices)}개 발견 · 프린터를 선택하세요." if devices
-            else "검색 결과가 없습니다. IP 주소를 입력해 보세요."
+            else "프린터를 찾지 못했습니다. 위 안내에서 모델과 IP 주소 확인 방법을 보세요."
         )
 
     def _select_discovered(self, current, previous):
@@ -558,6 +592,8 @@ class PrinterSetupWidget(QWidget):
             f"IPP: {version} · {status}"
         )
         self.identity_advice.setText(identity.recommendation)
+        if identity.name == "모델 미확인" or device.scheme == "dnssd":
+            self.discovery_help_button.setChecked(True)
         self.identity_advice.setToolTip(
             "지원 형식: " + (", ".join(identity.document_formats) or "미확인")
         )
@@ -905,6 +941,8 @@ class PrinterSetupWidget(QWidget):
         except PrinterRegistrationError as exc:
             self._error(str(exc))
             return
+        # 검색 결과 도착 전에 사용자가 입력한 IP를 덮어쓰지 않습니다.
+        self._auto_select_search_result = False
         self._select_device(device)
 
     def _mark_driver_user_edited(self, _index: int):
