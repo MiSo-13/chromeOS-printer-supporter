@@ -9,6 +9,7 @@ from printer_supporter.driver_recovery import recovery_advice
     ("multiple", "여러 개"),
     ("unavailable", "목록을 읽지"),
     ("no-candidate", "드라이버를 찾지"),
+    ("registration-failed", "등록을 완료하지"),
     ("failed", "설치를 완료하지"),
 ])
 def test_recovery_messages_for_different_failures(issue, text):
