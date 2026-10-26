@@ -20,6 +20,7 @@ from .identification import PrinterIdentity, identify_printer, unknown_identity
 from .dialogs import confirm_action, show_guide
 from .support_catalog import assess_printer
 from .driver_workflow import resolve_driver
+from .samsung_uld import SamsungInstallResult
 from .driver_recommendation import DriverAdvisor, DriverRecommendation
 from .driver_installation import (
     DriverInstallPlan, DriverInstallService, official_support_for, package_for_identity,
@@ -523,21 +524,37 @@ class PrinterSetupWidget(QWidget):
             or plan is None or not plan.can_install
         ):
             return
+        is_vendor = plan.source_kind == "samsung-uld"
         command = (
+            "HTTPS 다운로드 → SHA-256 검사 → "
+            "sudo -n apt-get install -y --no-install-recommends libcupsimage2 → "
+            "sudo -n install -m 0755 <검증된 x86_64 필터> /usr/lib/cups/filter/"
+            "chromeos-printer-samsung-uld-rastertospl → "
+            "사용자 폴더에 Samsung_M203x_Series.ppd 저장"
+            if is_vendor else
             f"sudo -n apt-get install -y --no-install-recommends {plan.package}"
         )
         if not confirm_action(
             self, title="드라이버 설치 확인",
-            summary=f"{plan.package} 패키지를 설치할까요?",
+            summary=(
+                "삼성 공식 Linux 드라이버를 다운로드·설치할까요?"
+                if is_vendor else f"{plan.package} 패키지를 설치할까요?"
+            ),
             details=(
                 f"프린터 모델: {identity.name}\n"
                 f"설치 패키지: {plan.package}\n"
                 f"지원 근거: {plan.package_evidence or 'Debian/Ubuntu 배포판'}\n"
-                f"모델 목록: {plan.package_source or '-'}\n"
-                f"실행 명령: {command}\n\n"
+                f"출처: {plan.package_source or '-'}\n"
+                f"검증 SHA-256: {plan.download_sha256 or 'APT 저장소 검증'}\n"
+                f"실행 작업: {command}\n\n"
                 "설치 위치: Crostini Linux 컨테이너\n"
-                "패키지 출처: 현재 설정된 Debian/Ubuntu APT 저장소\n"
-                "영향: 패키지 및 의존성이 설치될 수 있습니다.\n"
+                + (
+                    "제조사 공식 ZIP에서 확인된 필터와 PPD만 설치하며 "
+                    "제조사 설치 스크립트는 실행하지 않습니다.\n"
+                    if is_vendor else
+                    "패키지 출처: 현재 설정된 Debian/Ubuntu APT 저장소\n"
+                )
+                + "영향: 인쇄 필터 및/또는 패키지·의존성이 설치될 수 있습니다.\n"
                 "프린터 등록과 실제 인쇄는 하지 않습니다.\n"
                 "sudo 권한과 네트워크 연결이 필요합니다."
             ),
@@ -565,6 +582,18 @@ class PrinterSetupWidget(QWidget):
             self.install_button.setEnabled(
                 bool(self.install_plan and self.install_plan.can_install)
             )
+            return
+        if isinstance(message, SamsungInstallResult):
+            # 등록은 여전히 사용자가 별도 승인해야 실행됩니다.
+            self._driver_user_edited = True
+            self.ppd_path.setText(message.ppd_path)
+            index = self.driver.findData("ppd")
+            self.driver.setCurrentIndex(index)
+            self._driver_changed()
+            self.install_button.setEnabled(False)
+            self.status.setText("삼성 드라이버 설치 완료 · PPD 선택됨. 등록을 확인하세요.")
+            self.install_status_label.setText("공식 ULD PPD 및 x86_64 필터 설치 완료")
+            QMessageBox.information(self, "삼성 드라이버 설치", message.message)
             return
         self.status.setText("설치 완료 · CUPS에서 일치하는 드라이버를 다시 확인합니다.")
         QMessageBox.information(self, "드라이버 패키지 설치", message)
