@@ -35,7 +35,7 @@ FILTER_NAME = "chromeos-printer-samsung-uld-rastertospl"
 FILTER_TARGET = Path("/usr/lib/cups/filter") / FILTER_NAME
 ZIP_SIZE_LIMIT = 24_000_000
 TAR_SIZE_LIMIT = 26_000_000
-SUPPORTED_MODEL = "Samsung SL-M2030W"
+SUPPORTED_MODELS = frozenset({"Samsung SL-M2030W", "Samsung M203x Series"})
 
 
 class VendorDriverError(RuntimeError):
@@ -52,8 +52,8 @@ def supports_samsung_uld(identity: PrinterIdentity) -> bool:
     return (
         identity.source == "IPP 장치 응답"
         and identity.manufacturer == "Samsung"
-        and identity.model == "SL-M2030W"
-        and identity.name == SUPPORTED_MODEL
+        and identity.name in SUPPORTED_MODELS
+        and identity.name == f"{identity.manufacturer} {identity.model}"
     )
 
 
@@ -143,7 +143,7 @@ def install_samsung_uld(
     if not approved:
         raise VendorDriverError("사용자 승인 없이 드라이버를 설치할 수 없습니다.")
     if not supports_samsung_uld(identity):
-        raise VendorDriverError("Samsung SL-M2030W 장치 정보가 확인되지 않았습니다.")
+        raise VendorDriverError("Samsung SL-M2030W/M203x 모델 정보가 확인되지 않았습니다.")
     if not vendor_architecture_ok():
         raise VendorDriverError("삼성 ULD는 x86_64 Chromebook에서만 지원합니다.")
     raw = downloader()
