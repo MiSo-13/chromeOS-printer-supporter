@@ -35,6 +35,9 @@ def recovery_advice(
     elif issue == "unavailable":
         headline = "CUPS 드라이버 목록을 읽지 못했습니다."
         guidance = "CUPS 서비스와 조회 권한을 확인한 뒤 다시 검사해 주세요."
+    elif issue == "no-candidate":
+        headline = "자동으로 사용할 드라이버를 찾지 못했습니다."
+        guidance = "IPP 지원 여부를 확인하거나 제조사에서 제공한 PPD를 선택해 주세요."
     else:
         headline = "드라이버 설치를 완료하지 못했습니다."
         lowered = error.casefold()
