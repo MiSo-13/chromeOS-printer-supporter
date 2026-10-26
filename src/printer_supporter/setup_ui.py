@@ -550,7 +550,7 @@ class PrinterSetupWidget(QWidget):
                 "설치 위치: Crostini Linux 컨테이너\n"
                 + (
                     "제조사 공식 ZIP에서 확인된 필터와 PPD만 설치하며 "
-                    "제조사 설치 스크립트는 실행하지 않습니다.\n"
+                    "제조사 설치 스크립트(install.sh)는 실행하지 않습니다.\n"
                     if is_vendor else
                     "패키지 출처: 현재 설정된 Debian/Ubuntu APT 저장소\n"
                 )
