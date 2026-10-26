@@ -117,7 +117,14 @@ def distro_package_for(identity: PrinterIdentity) -> DistroDriver | None:
         (GUTENPRINT_MODELS, "printer-driver-gutenprint", GUTENPRINT_SOURCE, "Gutenprint 모델 목록"),
     ):
         for vendor, names in mapping.items():
-            if brand == vendor.casefold() and model in names:
+            # Konica Minolta 기기는 IPP 응답에 "Minolta" 또는
+            # "Konica Minolta"를 보고할 수 있습니다. foo2zjs 모델만 별칭 허용.
+            vendor_matches = brand == vendor.casefold() or (
+                package == "printer-driver-foo2zjs"
+                and vendor == "Minolta"
+                and brand == "konica minolta"
+            )
+            if vendor_matches and model in names:
                 return DistroDriver(package, source, evidence)
     return None
 
