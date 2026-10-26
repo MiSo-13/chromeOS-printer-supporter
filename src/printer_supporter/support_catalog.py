@@ -37,8 +37,8 @@ FOCUS_PRINTERS: tuple[FocusPrinter, ...] = (
         "Samsung", "SL-M2030W", "vendor-manual",
         "제조사 공식 Linux 드라이버 다운로드 안내",
         SAMSUNG_M2030W_SUPPORT,
-        "삼성 공식 지원 페이지에서 Linux 드라이버/아키텍처를 확인하세요. "
-        "자동 다운로드나 제조사 설치 스크립트 실행은 제공하지 않습니다.",
+        "x86_64에서는 삼성 공식 ZIP을 SHA-256으로 검증해 승인 후 다운로드·설치할 수 있습니다. "
+        "ARM은 지원되지 않으며 제조사 설치 스크립트는 실행하지 않습니다.",
     ),
     FocusPrinter(
         "Brother", "HL-L2340D series", "distro-package",
@@ -115,6 +115,12 @@ def assess_printer(identity: PrinterIdentity) -> FocusAssessment:
                     entry, True, f"우선 안내 모델: {entry.full_name}",
                     f"{entry.evidence}. {entry.guidance} "
                     "실제 Chromebook 인쇄 성공 여부는 아직 검증되지 않았습니다.",
+                )
+            if identity.source == "사용자 확인(명시적 선택)":
+                return FocusAssessment(
+                    entry, False, f"직접 확인한 모델: {entry.full_name}",
+                    f"사용자가 선택한 모델이며 IPP 장치 응답으로 검증된 정보는 아닙니다. "
+                    f"{entry.guidance}",
                 )
             return FocusAssessment(
                 entry, False, f"우선 목록과 이름 일치: {entry.full_name}",

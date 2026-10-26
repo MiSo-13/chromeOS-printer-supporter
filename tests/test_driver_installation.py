@@ -51,7 +51,10 @@ def test_samsung_specific_official_linux_download_link_and_no_apt(tmp_path):
     service, calls = make_service(tmp_path)
     plan = service.plan(samsung)
     assert plan.support_url == SAMSUNG_SL_M2030W
-    assert plan.package is None and not plan.can_install
+    assert plan.package == "samsung-uld-m2030w"
+    assert plan.source_kind == "samsung-uld"
+    assert plan.download_sha256 is not None
+    assert plan.package_status in {"available", "unavailable"}
     assert not calls
 
 
@@ -186,5 +189,5 @@ def test_unknown_vendor_never_has_unverified_source_link():
 
 def test_declared_brother_supported_models_all_allowlist_match():
     for model in BROLASER_MODELS:
-        printer = identity("Brother " + model)
+        printer = identity("Brother " + model, model=model)
         assert package_for_identity(printer) == "printer-driver-brlaser"

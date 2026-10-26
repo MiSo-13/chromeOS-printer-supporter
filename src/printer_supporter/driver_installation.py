@@ -1,7 +1,7 @@
-"""공식 제조사 지원 페이지와 명시적 승인 기반 배포판 드라이버 설치.
+"""검증 가능한 모델별 APT 드라이버 탐색과 승인 기반 설치.
 
-제조사 제공 다운로드 바이너리/스크립트는 절대로 앱에서 실행하지 않습니다.
-Linux 배포판 저장소의 사전에 허용된 패키지만 설치할 수 있습니다.
+브랜드만 보고 호환 패키지를 추정하지 않으며, 공식 저장소 패키지만 설치합니다.
+제조사 ZIP/바이너리의 자동 실행은 별도의 검증 전까지 보류합니다.
 """
 from __future__ import annotations
 
@@ -12,6 +12,10 @@ from typing import Callable
 import re
 
 from .identification import PrinterIdentity
+from .samsung_uld import (
+    SAMSUNG_ULD_URL, SAMSUNG_ULD_SHA256, SamsungInstallResult,
+    install_samsung_uld, supports_samsung_uld, vendor_architecture_ok,
+)
 
 # 다음 링크는 제조사 공식 사이트 및 배포판 문서에서 개별 확인한 정적 주소입니다.
 # 감지된 프린터 이름을 URL에 삽입하거나 임의의 다운로드 주소를 열지 않습니다.
@@ -26,21 +30,18 @@ OFFICIAL_SUPPORT = {
 SAMSUNG_SL_M2030W = "https://www.samsung.com/sec/support/model/SL-M2030W/"
 BROTHER_BRLASER_DOCS = "https://packages.debian.org/bookworm/printer-driver-brlaser"
 
-# Debian 패키지 메타데이터에 호환이 명시된 모델만 나열합니다.
-# 'Series'는 모델 식별 정규화 과정에서 임의로 생략하지 않습니다.
-BROLASER_MODELS = frozenset({
-    "DCP-1510", "DCP-1602", "DCP-7030", "DCP-7040", "DCP-7055",
-    "DCP-7055W", "DCP-7060D", "DCP-7065DN", "DCP-7080",
-    "DCP-L2500D", "DCP-L2540DW", "DCP-L2710DW",
-    "HL-1110 SERIES", "HL-1200 SERIES", "HL-L2300D SERIES",
-    "HL-L2320D SERIES", "HL-L2340D SERIES", "HL-L2360D SERIES",
-    "MFC-1910W", "MFC-7240", "MFC-7360N", "MFC-7365DN",
-    "MFC-7840W", "MFC-L2710DW",
-})
-# 호환이 명확한 모델 하나의 배포판 패키지부터 지원하고, 임의의
-# 패키지 이름이나 서드파티 저장소를 모델에서 유추하지 않습니다.
-ALLOWLIST = {"printer-driver-brlaser": "Brother"}
+# 모델별 배포판 드라이버 판단은 한 곳에서 관리합니다.
+from .driver_package_catalog import (
+    BROTHER_BR_LASER as BROLASER_MODELS,
+    distro_package_for,
+)
 
+ALLOWLIST = {
+    "printer-driver-brlaser": "Brother",
+    "printer-driver-splix": ("Samsung", "Xerox", "Dell", "Lexmark"),
+    "printer-driver-foo2zjs": ("HP", "Minolta", "Konica Minolta"),
+    "printer-driver-gutenprint": ("Epson", "Canon"),
+}
 
 @dataclass(frozen=True)
 class DriverInstallPlan:
@@ -52,6 +53,11 @@ class DriverInstallPlan:
     package: str | None
     package_status: str       # available, installed, unavailable, unknown, not_applicable
     package_note: str
+    package_source: str | None = None
+    package_evidence: str | None = None
+    source_kind: str = "apt"          # apt | samsung-uld
+    download_url: str | None = None
+    download_sha256: str | None = None
 
     @property
     def can_install(self) -> bool:
@@ -67,16 +73,9 @@ def _normalized_name(name: str) -> str:
 
 
 def package_for_identity(identity: PrinterIdentity) -> str | None:
-    """실제 IPP 응답에서 확인된 Brother 지원 모델만 배포판 설치 대상으로 지정."""
-    if identity.source != "IPP 장치 응답" or identity.manufacturer != "Brother":
-        return None
-    reported = _normalized_name(identity.name)
-    if not reported.startswith("BROTHER "):
-        return None
-    model = reported[len("BROTHER "):]
-    if model in BROLASER_MODELS:
-        return "printer-driver-brlaser"
-    return None
+    """검증된 IPP 모델과 공개 드라이버 모델 목록의 정확한 일치만 허용."""
+    candidate = distro_package_for(identity)
+    return candidate.package if candidate else None
 
 
 def official_support_for(identity: PrinterIdentity) -> tuple[str | None, str | None, str]:
@@ -86,9 +85,9 @@ def official_support_for(identity: PrinterIdentity) -> tuple[str | None, str | N
         return (
             "Samsung SL-M2030W 공식 다운로드",
             SAMSUNG_SL_M2030W,
-            "이 모델의 공식 지원 페이지에 Linux 드라이버가 게시되어 있습니다. "
-            "운영체제·아키텍처·라이선스를 확인한 뒤 수동으로 받으세요. "
-            "앱은 다운로드한 압축파일·스크립트를 자동 실행하지 않습니다.",
+            "공식 Linux 드라이버를 확인했습니다. x86_64 환경에서는 "
+            "설치 내용을 승인하면 공식 파일을 다운로드하고 해시를 확인한 후 "
+            "인쇄 필터와 PPD만 설치합니다. 제조사 설치 스크립트는 실행하지 않습니다.",
         )
     support = OFFICIAL_SUPPORT.get(identity.manufacturer or "")
     if support is None:
@@ -119,9 +118,11 @@ class DriverInstallService:
         runner: Callable[..., CompletedProcess[str]] = run,
         *,
         os_release: str | Path = "/etc/os-release",
+        vendor_installer: Callable[..., SamsungInstallResult] = install_samsung_uld,
     ):
         self.runner = runner
         self.os_release = Path(os_release)
+        self.vendor_installer = vendor_installer
 
     def _run(self, args: list[str], timeout: int = 20) -> CompletedProcess[str]:
         try:
@@ -147,13 +148,31 @@ class DriverInstallService:
 
     def plan(self, identity: PrinterIdentity) -> DriverInstallPlan:
         title, url, note = official_support_for(identity)
-        package = package_for_identity(identity)
+        # 직접 확인한 SL-M2030W는 삼성 공식 ZIP을 고정 SHA로 검증해
+        # x86_64 CUPS PPD/필터만 설치합니다 (제조사 스크립트 실행 없음).
+        if supports_samsung_uld(identity):
+            supported = vendor_architecture_ok()
+            return DriverInstallPlan(
+                identity.manufacturer, identity.name, title, url, note,
+                "samsung-uld-m2030w",
+                "available" if supported else "unavailable",
+                (
+                    "삼성 공식 파일에서 x86_64 CUPS 필터와 M203x PPD를 확인했습니다. "
+                    "사용자 승인 후 다운로드·검증·설치합니다. ARM은 지원하지 않습니다."
+                    if supported else
+                    "삼성 공식 ULD에는 arm64 CUPS 필터가 없어 자동 설치할 수 없습니다."
+                ),
+                SAMSUNG_ULD_URL, "삼성 공식 M203x Linux 드라이버",
+                "samsung-uld", SAMSUNG_ULD_URL, SAMSUNG_ULD_SHA256,
+            )
+        candidate = distro_package_for(identity)
+        package = candidate.package if candidate else None
         if package is None:
             return DriverInstallPlan(
                 identity.manufacturer, identity.name, title, url, note,
                 None, "not_applicable",
-                "정확한 모델과 배포판 지원 근거가 없어 자동 설치할 패키지를 지정하지 않았습니다. "
-                "공식 지원 페이지 또는 기존 PPD 선택을 이용하세요.",
+                "배포판에서 확인된 모델별 드라이버가 없습니다. "
+                "IPP, 설치된 CUPS 모델 또는 제조사 다운로드를 확인하세요.",
             )
         try:
             self._verify_linux_distribution()
@@ -168,9 +187,8 @@ class DriverInstallService:
                 if policy.returncode == 0 and _candidate_available(policy.stdout):
                     status = "available"
                     text = (
-                        "설정된 Debian/Ubuntu APT 저장소에서 설치 가능한 "
-                        "printer-driver-brlaser 패키지를 확인했습니다. "
-                        "패키지의 모델 지원 문서: " + BROTHER_BRLASER_DOCS
+                        f"APT에서 {package} 설치 가능 · "
+                        f"{candidate.evidence}: {candidate.source_url}"
                     )
                 else:
                     status = "unavailable"
@@ -180,19 +198,38 @@ class DriverInstallService:
             text = str(exc)
         return DriverInstallPlan(
             identity.manufacturer, identity.name, title, url, note,
-            package, status, text,
+            package, status, text, candidate.source_url, candidate.evidence,
         )
 
     def install(
         self, identity: PrinterIdentity, plan: DriverInstallPlan,
         *, approved: bool = False,
-    ) -> str:
+    ) -> str | SamsungInstallResult:
         if not approved:
             raise DriverInstallError("사용자 승인 없이 드라이버를 설치할 수 없습니다.")
+        if plan.source_kind == "samsung-uld":
+            if (
+                not supports_samsung_uld(identity) or not vendor_architecture_ok()
+                or plan.manufacturer != identity.manufacturer
+                or plan.model_name != identity.name
+                or not plan.can_install or plan.package != "samsung-uld-m2030w"
+                or plan.download_url != SAMSUNG_ULD_URL
+                or plan.download_sha256 != SAMSUNG_ULD_SHA256
+            ):
+                raise DriverInstallError("삼성 공식 드라이버의 설치 계획이 유효하지 않습니다.")
+            current = self.plan(identity)
+            if current != plan:
+                raise DriverInstallError("삼성 드라이버 설치 계획이 변경되어 다시 확인해야 합니다.")
+            return self.vendor_installer(identity, approved=True)
+        if plan.source_kind != "apt":
+            raise DriverInstallError("지원하지 않는 드라이버 설치 경로입니다.")
         package = package_for_identity(identity)
         if (
             not package or package not in ALLOWLIST
-            or ALLOWLIST[package] != identity.manufacturer
+            or identity.manufacturer not in (
+                (ALLOWLIST[package],) if isinstance(ALLOWLIST[package], str)
+                else ALLOWLIST[package]
+            )
             or plan.package != package or plan.model_name != identity.name
             or plan.manufacturer != identity.manufacturer
             or not plan.can_install
