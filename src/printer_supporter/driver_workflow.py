@@ -56,7 +56,7 @@ def resolve_driver(
             f"모델 근거: {plan.package_evidence or '배포판 지원 목록'}\n"
             f"참고: {plan.package_source or '-'}\n"
             "설치 전 내용 확인과 승인이 필요합니다. 설치 후 CUPS 모델을 다시 조회합니다."
-            + (f"\\n추가 확인: {plan.additional_notice}" if plan.additional_notice else ""),
+            + (f"\n추가 확인: {plan.additional_notice}" if plan.additional_notice else ""),
             True,
         )
     if plan and plan.package and plan.package_status == "installed":
@@ -64,7 +64,7 @@ def resolve_driver(
             "apt-installed", f"{plan.package} 설치됨",
             "패키지는 이미 설치됐으나 정확히 일치하는 CUPS 모델을 찾지 못했습니다. "
             "장치 모델/드라이버를 다시 확인하세요."
-            + (f"\\n추가 확인: {plan.additional_notice}" if plan.additional_notice else ""),
+            + (f"\n추가 확인: {plan.additional_notice}" if plan.additional_notice else ""),
             False,
         )
     if plan and plan.support_url:
