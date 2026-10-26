@@ -116,6 +116,12 @@ def assess_printer(identity: PrinterIdentity) -> FocusAssessment:
                     f"{entry.evidence}. {entry.guidance} "
                     "실제 Chromebook 인쇄 성공 여부는 아직 검증되지 않았습니다.",
                 )
+            if identity.source == "사용자 확인(명시적 선택)":
+                return FocusAssessment(
+                    entry, False, f"직접 확인한 모델: {entry.full_name}",
+                    f"사용자가 선택한 모델이며 IPP 장치 응답으로 검증된 정보는 아닙니다. "
+                    f"{entry.guidance}",
+                )
             return FocusAssessment(
                 entry, False, f"우선 목록과 이름 일치: {entry.full_name}",
                 f"{entry.evidence}. 검색 이름만 일치하므로 실제 모델은 미검증입니다. "
