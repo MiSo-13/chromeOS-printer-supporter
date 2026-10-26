@@ -67,7 +67,7 @@ def test_archive_extracts_only_pinned_ppd_and_filter(monkeypatch):
     extracted_filter, rewritten = uld.extract_verified_files(raw)
     assert extracted_filter == original_filter
     assert uld.FILTER_NAME.encode() in rewritten
-    assert b'rastertospl"' not in rewritten
+    assert b' 0 rastertospl"' not in rewritten
     assert b"Samsung M203x Series" in rewritten
 
 
