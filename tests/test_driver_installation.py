@@ -186,5 +186,5 @@ def test_unknown_vendor_never_has_unverified_source_link():
 
 def test_declared_brother_supported_models_all_allowlist_match():
     for model in BROLASER_MODELS:
-        printer = identity("Brother " + model)
+        printer = identity("Brother " + model, model=model)
         assert package_for_identity(printer) == "printer-driver-brlaser"
