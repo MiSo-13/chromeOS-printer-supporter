@@ -2,6 +2,8 @@
 
 특정 제조사 전용 앱이 아닙니다. IPP Everywhere나 설치된 CUPS 드라이버가 있으면 추가 설치 없이 연결할 수 있습니다.
 
+앱은 목록에 없는 프린터도 **일반 호환성 확인**을 수행합니다.
+
 ## 드라이버 자동 탐색
 
 필요한 경우 Debian/Ubuntu APT 저장소에서 다음 드라이버 패키지를 확인합니다. **모델 지원 자료와 실제 IPP 모델명이 정확히 일치한 경우에만** 설치를 제안합니다.
@@ -20,6 +22,18 @@
 ## Samsung SL-M2030W
 
 [삼성 공식 지원 페이지](https://www.samsung.com/sec/support/model/SL-M2030W/)에 Linux 드라이버가 있습니다. 다만 SpliX에서 이 모델의 정확한 호환성은 확인되지 않았습니다. 현재 앱은 공식 페이지를 안내하며 **삼성 제공 ZIP 파일의 자동 설치는 지원하지 않습니다.**
+
+## 우선 안내 모델
+
+아래 7개는 설치 경로 안내를 우선 제공하는 모델입니다. **실기기 검증 완료**와는 다릅니다. **현재 공개할 실기기 검증 기록은 없습니다.**
+
+| 제조사 | 모델 | 참고 자료 |
+|---|---|---|
+| Samsung | SL-M2030W | [삼성 공식 지원](https://www.samsung.com/sec/support/model/SL-M2030W/) |
+| Brother | HL-L2340D series, DCP-L2540DW, MFC-L2710DW | [Debian brlaser](https://packages.debian.org/bookworm/printer-driver-brlaser) |
+| HP | LaserJet Pro M404dw | [PWG IPP Everywhere](https://www.pwg.org/printers/) |
+| Canon | imageCLASS MF662Cdw | [PWG IPP Everywhere](https://www.pwg.org/printers/) |
+| Epson | EM-C7100 | [PWG IPP Everywhere](https://www.pwg.org/printers/) |
 
 ## 프린터 추가 시 알아둘 점
 
