@@ -43,9 +43,11 @@ class PrinterSetupWidget(QWidget):
         self.identifier = identifier or identify_printer
         self.advisor = advisor or DriverAdvisor()
         self.installer = installer or DriverInstallService()
-        # 프린터 한 대를 확인할 때 IPP·CUPS·APT 조회가 과도하게 병렬 실행되지 않게 합니다.
-        self.pool = QThreadPool(self)
-        self.pool.setMaxThreadCount(2)
+        # 기존 공유 풀을 재사용해 별도의 스레드 풀을 늘리지 않습니다.
+        # Crostini에서 CPU가 많은 환경이어도 보조 작업은 최대 2개만 실행합니다.
+        self.pool = QThreadPool.globalInstance()
+        if self.pool.maxThreadCount() > 2:
+            self.pool.setMaxThreadCount(2)
         self.pool.setExpiryTimeout(1000)
         self.current_device: DiscoveredPrinter | None = None
         self.identity_result: PrinterIdentity | None = None
