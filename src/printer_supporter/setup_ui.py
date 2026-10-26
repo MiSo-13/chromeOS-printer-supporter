@@ -22,6 +22,7 @@ from .identification import PrinterIdentity, identify_printer, unknown_identity
 from .dialogs import confirm_action, show_guide
 from .support_catalog import assess_printer
 from .driver_workflow import resolve_driver
+from .driver_recovery import recovery_advice
 from .samsung_uld import SamsungInstallResult
 from .driver_recommendation import DriverAdvisor, DriverRecommendation
 from .driver_installation import (
@@ -54,6 +55,8 @@ class PrinterSetupWidget(QWidget):
         self._search_info_seen = False
         self._scan_busy = False
         self._register_busy = False
+        self._recovery_issue: str | None = None
+        self._recovery_error = ""
 
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
@@ -176,6 +179,7 @@ class PrinterSetupWidget(QWidget):
         self.model_choice.setAccessibleName("설치된 CUPS 모델")
         self.model_choice.addItem("일치하는 모델을 먼저 확인하세요", None)
         self.model_choice.setEnabled(False)
+        self.model_choice.activated.connect(self._recovery_cups_model_selected)
         form.addRow("CUPS 모델", self.model_choice)
         self.recommendation_summary = QLabel("드라이버 추천: 프린터를 선택해 주세요.")
         self.recommendation_summary.setWordWrap(True)
@@ -205,6 +209,37 @@ class PrinterSetupWidget(QWidget):
         self.install_button.setEnabled(False)
         self.install_button.clicked.connect(self.install_driver)
         install_layout.addWidget(self.install_button)
+
+        self.recovery_panel = QGroupBox("연결 문제 해결")
+        self.recovery_panel.setObjectName("driverRecoveryPanel")
+        recovery_layout = QVBoxLayout(self.recovery_panel)
+        self.recovery_summary = QLabel("")
+        self.recovery_summary.setTextFormat(Qt.TextFormat.PlainText)
+        self.recovery_summary.setWordWrap(True)
+        recovery_layout.addWidget(self.recovery_summary)
+        self.recovery_details = QLabel("")
+        self.recovery_details.setTextFormat(Qt.TextFormat.PlainText)
+        self.recovery_details.setWordWrap(True)
+        recovery_layout.addWidget(self.recovery_details)
+        recovery_buttons = QHBoxLayout()
+        self.recovery_recheck_button = QPushButton("드라이버 다시 확인")
+        self.recovery_recheck_button.clicked.connect(self.recheck_driver)
+        recovery_buttons.addWidget(self.recovery_recheck_button)
+        self.recovery_ipp_button = QPushButton("IPP 연결 시도")
+        self.recovery_ipp_button.clicked.connect(self.try_recovery_ipp)
+        recovery_buttons.addWidget(self.recovery_ipp_button)
+        recovery_layout.addLayout(recovery_buttons)
+        recovery_buttons2 = QHBoxLayout()
+        self.recovery_cups_button = QPushButton("설치된 CUPS 드라이버 선택")
+        self.recovery_cups_button.clicked.connect(self.choose_recovery_cups)
+        recovery_buttons2.addWidget(self.recovery_cups_button)
+        self.recovery_ppd_button = QPushButton("PPD 파일 선택")
+        self.recovery_ppd_button.clicked.connect(self.choose_ppd)
+        recovery_buttons2.addWidget(self.recovery_ppd_button)
+        recovery_layout.addLayout(recovery_buttons2)
+        self.recovery_panel.hide()
+        install_layout.addWidget(self.recovery_panel)
+
         install_note = QLabel(
             "드라이버 설치는 실행 내용 확인 후 승인해야 진행됩니다."
         )
@@ -259,6 +294,97 @@ class PrinterSetupWidget(QWidget):
         # lpinfo -v는 일부 Crostini CUPS에서 관리자 권한이 필요합니다.
         # 앱 시작 시 자동 실행하지 않고 사용자가 검색 버튼을 누를 때만 실행합니다.
 
+    def _clear_recovery(self):
+        self._recovery_issue = None
+        self._recovery_error = ""
+        self.recovery_panel.hide()
+
+    def _show_recovery(self, issue: str, error: str = ""):
+        self._recovery_issue = issue
+        self._recovery_error = error
+        self._update_recovery()
+
+    def _update_recovery(self):
+        if not self._recovery_issue or self.current_device is None:
+            self.recovery_panel.hide()
+            return
+        identity = self.identity_result
+        recommendation = self.driver_recommendation
+        plan = self.install_plan
+        guide = recovery_advice(
+            self._recovery_issue,
+            error=self._recovery_error,
+            scheme=self.current_device.scheme,
+            driverless=identity.driverless if identity else "unknown",
+            matching_cups_count=(
+                len(recommendation.installed_matches) if recommendation else 0
+            ),
+            official_support=bool(plan and plan.support_url),
+        )
+        self.recovery_summary.setText(guide.summary)
+        self.recovery_details.setText(guide.instructions)
+        self.recovery_recheck_button.setEnabled(not self._install_busy)
+        self.recovery_ipp_button.setEnabled(guide.can_try_ipp and not self._install_busy)
+        self.recovery_cups_button.setEnabled(
+            guide.has_cups_choices and not self._install_busy
+        )
+        self.recovery_ppd_button.setEnabled(not self._install_busy)
+        self.recovery_panel.show()
+
+    def recheck_driver(self):
+        """재설치 없이 IPP·CUPS·APT 상태를 다시 확인합니다."""
+        if self._install_busy or self.current_device is None:
+            return
+        self.status.setText("IPP/CUPS 드라이버와 설치 상태를 다시 확인합니다…")
+        self.identify_current()
+
+    def try_recovery_ipp(self):
+        device = self.current_device
+        identity = self.identity_result
+        if (
+            self._install_busy or device is None or identity is None
+            or device.scheme not in {"ipp", "ipps"}
+            or identity.driverless not in {"reported", "candidate"}
+        ):
+            return
+        self._driver_user_edited = True
+        index = self.driver.findData("everywhere")
+        if index < 0:
+            return
+        self.driver.setCurrentIndex(index)
+        self._clear_recovery()
+        self.status.setText(
+            "IPP Everywhere를 선택했습니다. 실제 인쇄 가능 여부는 미확인입니다. "
+            "등록 내용을 확인하고 별도로 승인해 주세요."
+        )
+
+    def _recovery_cups_model_selected(self, _index: int):
+        if self.driver.currentData() != "model" or not self.model_choice.currentData():
+            return
+        self._driver_user_edited = True
+        self._clear_recovery()
+        self.status.setText(
+            "CUPS 모델을 선택했습니다. 실제 프린터와 일치하는지 확인한 후 등록해 주세요."
+        )
+
+    def choose_recovery_cups(self):
+        recommendation = self.driver_recommendation
+        if (
+            self._install_busy or recommendation is None
+            or not recommendation.installed_matches
+        ):
+            return
+        self._driver_user_edited = True
+        index = self.driver.findData("model")
+        if index < 0:
+            return
+        self.driver.setCurrentIndex(index)
+        self._driver_changed()
+        self.status.setText(
+            "CUPS 모델 목록에서 실제 기기와 일치하는 드라이버를 고른 다음 "
+            "프린터 등록을 별도로 승인해 주세요."
+        )
+
     def _toggle_details(self, expanded: bool):
         for label in self._optional_details:
             label.setVisible(expanded)
@@ -291,6 +417,10 @@ class PrinterSetupWidget(QWidget):
     def _registration_failed(self, message: str):
         self._register_busy = False
         self.register_button.setEnabled(self.current_device is not None)
+        if "동일한 이름의 프린터" in message:
+            self.status.setText("다른 프린터 이름을 입력한 뒤 다시 등록해 주세요.")
+        else:
+            self._show_recovery("registration-failed", message)
         self._error(message)
 
     def _search_failed(self, message: str):
@@ -353,6 +483,7 @@ class PrinterSetupWidget(QWidget):
         self._queue_name_user_edited = True
 
     def _select_device(self, device: DiscoveredPrinter):
+        self._clear_recovery()
         self.current_device = device
         self.probe_button.setEnabled(True)
         self.register_button.setEnabled(not self._register_busy)
@@ -494,6 +625,26 @@ class PrinterSetupWidget(QWidget):
             if resolution.can_install and self.install_plan
             else "설치할 배포판 패키지 없음"
         )
+        if self.driver_recommendation is not None:
+            if (
+                resolution.route in {"installed", "ipp"}
+                and self._recovery_issue in {"missing", "multiple", "unavailable", "no-candidate"}
+            ):
+                self._clear_recovery()
+            elif (
+                resolution.route == "apt-installed"
+                and not self._recovery_issue
+                and not self._driver_user_edited
+            ):
+                self._show_recovery("missing")
+            elif (
+                resolution.route in {"manual", "vendor"}
+                and not self._recovery_issue
+                and not self._driver_user_edited
+            ):
+                self._show_recovery("no-candidate")
+            elif self._recovery_issue:
+                self._update_recovery()
 
     def _install_plan_ready(self, result):
         generation, device, plan = result
@@ -515,6 +666,7 @@ class PrinterSetupWidget(QWidget):
         self.install_button.setEnabled(False)
         self.install_status_label.setText("드라이버 확인 실패: " + message[:250])
         self.resolution_status.setText("수동 드라이버 확인 필요")
+        self._show_recovery("unavailable", message)
 
     def _open_official_support(self):
         plan = self.install_plan
@@ -612,6 +764,10 @@ class PrinterSetupWidget(QWidget):
         if isinstance(message, AptInstallResult):
             self.status.setText(message.message)
             if message.cups_status == "matched":
+                self._clear_recovery()
+            else:
+                self._show_recovery(message.cups_status)
+            if message.cups_status == "matched":
                 QMessageBox.information(self, "드라이버 설치 확인", message.message)
             else:
                 QMessageBox.warning(self, "드라이버 추가 확인 필요", message.message)
@@ -633,7 +789,8 @@ class PrinterSetupWidget(QWidget):
             "드라이버 설치 실패: " + message[:400]
         )
         self.install_button.setEnabled(False)
-        self.status.setText("설치를 다시 진행하려면 모델 정보를 다시 확인하세요.")
+        self.status.setText("설치 실패 · 아래 연결 문제 해결에서 다시 확인하거나 다른 방법을 선택하세요.")
+        self._show_recovery("failed", message)
         QMessageBox.warning(self, "드라이버 설치 실패", message)
 
     def _recommendation_ready(self, result):
@@ -676,6 +833,8 @@ class PrinterSetupWidget(QWidget):
         self._driver_changed()
         if self.install_plan is not None:
             self._refresh_driver_resolution()
+        if self._recovery_issue:
+            self._update_recovery()
 
     def _recommendation_failed(
         self, generation: int, device: DiscoveredPrinter, message: str,
@@ -692,6 +851,10 @@ class PrinterSetupWidget(QWidget):
         )
         if self.install_plan is not None:
             self._refresh_driver_resolution()
+        else:
+            self._show_recovery("unavailable", message)
+        if self._recovery_issue:
+            self._update_recovery()
 
     def confirm_samsung_model(self):
         """IPP 조회가 안 되는 Socket 장치는 사용자 확인만으로 명시적 모델 지정."""
@@ -762,6 +925,10 @@ class PrinterSetupWidget(QWidget):
             self._driver_user_edited = True
             self.ppd_path.setText(path)
             self.driver.setCurrentIndex(self.driver.findData("ppd"))
+            self._clear_recovery()
+            self.status.setText(
+                "PPD 파일을 선택했습니다. 실제 프린터 모델과 일치하는지 확인하고 등록해 주세요."
+            )
 
     def probe(self):
         if not self.current_device:
