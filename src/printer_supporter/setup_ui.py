@@ -113,10 +113,10 @@ class PrinterSetupWidget(QWidget):
         self.discovery_help_text = QLabel(
             "1. 프린터가 켜져 있는지, Chromebook과 같은 네트워크에 연결됐는지 확인하세요.\n"
             "2. 프린터 앞면 또는 뒷면의 제품 라벨에서 제조사와 모델명을 확인하세요.\n"
-            "3. 프린터의 네트워크 설정 화면이나 네트워크 정보 출력물에서 IPv4 주소를 확인하세요.\n"
+            "3. 프린터 네트워크 설정에서 IPv4 또는 IPv6 주소를 확인하세요.\n"
             "4. Chromebook 설정의 프린터 목록 또는 공유기 연결 장치 목록에서도 확인할 수 있습니다.\n"
-            "5. IP 주소를 알았다면 아래에 입력하고 IPP 연결부터 시도하세요. "
-            "프린터에 따라 IPP 주소 경로가 달라질 수 있습니다.\n"
+            "5. IP 주소를 입력하고 IPP/IPPS 연결부터 확인하세요. "
+            "필요하면 프린터가 안내한 IPP 경로와 포트를 지정할 수 있습니다.\n"
             "ChromeOS에 등록된 프린터가 Linux(Crostini)에서 자동으로 보이는 것은 아닙니다. "
             "USB 연결 프린터는 Linux의 장치 접근 권한도 필요할 수 있습니다."
         )
@@ -179,12 +179,21 @@ class PrinterSetupWidget(QWidget):
         form.setHorizontalSpacing(18)
         form.setVerticalSpacing(12)
         self.ip_input = QLineEdit()
-        self.ip_input.setPlaceholderText("예: 192.168.6.147")
+        self.ip_input.setPlaceholderText("예: 192.168.6.147 또는 2001:db8::10")
         manual_form.addRow("IP 주소", self.ip_input)
         self.protocol = QComboBox()
         self.protocol.addItem("IPP (631) · 지원 여부 자동 확인", "ipp")
+        self.protocol.addItem("IPPS (TLS) · 암호화 연결", "ipps")
         self.protocol.addItem("Socket / JetDirect (9100)", "socket")
+        self.protocol.currentIndexChanged.connect(self._manual_protocol_changed)
         manual_form.addRow("연결 방식", self.protocol)
+        self.ipp_path = QLineEdit("/ipp/print")
+        self.ipp_path.setPlaceholderText("예: /ipp/print 또는 /printers/queue")
+        self.ipp_path.setToolTip("프린터 설정에서 확인한 IPP 경로를 입력하세요. 자동 경로 검색은 하지 않습니다.")
+        manual_form.addRow("IPP 경로", self.ipp_path)
+        self.port_input = QLineEdit()
+        manual_form.addRow("포트 (선택)", self.port_input)
+        self._manual_protocol_changed()
         apply_ip = QPushButton("IP 주소 적용")
         apply_ip.clicked.connect(self.apply_manual)
         manual_form.addRow("", apply_ip)
@@ -937,9 +946,17 @@ class PrinterSetupWidget(QWidget):
                 (generation, device, unknown_identity(device, "모델 조회 오류가 발생했습니다."))
             )
 
+    def _manual_protocol_changed(self, _index: int = 0):
+        protocol = self.protocol.currentData()
+        self.ipp_path.setEnabled(protocol in {"ipp", "ipps"})
+        self.port_input.setPlaceholderText("비우면 9100" if protocol == "socket" else "비우면 631")
+
     def apply_manual(self):
         try:
-            device = manual_printer(self.ip_input.text(), protocol=self.protocol.currentData())
+            device = manual_printer(
+                self.ip_input.text(), protocol=self.protocol.currentData(),
+                path=self.ipp_path.text(), port=self.port_input.text(),
+            )
         except PrinterRegistrationError as exc:
             self._error(str(exc))
             return

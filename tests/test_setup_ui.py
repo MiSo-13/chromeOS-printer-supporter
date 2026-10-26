@@ -34,5 +34,14 @@ def test_setup_does_not_search_automatically(monkeypatch):
     widget.protocol.setCurrentIndex(widget.protocol.findData("socket"))
     widget.apply_manual()
     assert widget.uri.text() == "socket://192.168.6.147:9100"
+    assert not widget.ipp_path.isEnabled()
+
+    widget.protocol.setCurrentIndex(widget.protocol.findData("ipps"))
+    assert widget.ipp_path.isEnabled()
+    widget.ipp_path.setText("/printers/Office")
+    widget.port_input.setText("443")
+    widget.apply_manual()
+    assert widget.uri.text() == "ipps://192.168.6.147:443/printers/Office"
+    assert widget.current_device.scheme == "ipps"
     widget.close()
 

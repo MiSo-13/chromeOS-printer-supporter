@@ -96,19 +96,49 @@ def parse_ippfind_devices(output: str) -> list[DiscoveredPrinter]:
     return sorted(found.values(), key=lambda device: device.name.lower())
 
 
-def manual_printer(ip: str, *, protocol: str) -> DiscoveredPrinter:
+def manual_printer(
+    ip: str, *, protocol: str, path: str = "/ipp/print", port: int | str | None = None,
+) -> DiscoveredPrinter:
+    """사용자가 지정한 IP와 연결 경로만 사용합니다. 자동 포트·경로 탐색은 하지 않습니다."""
     try:
         address = ip_address(ip.strip())
     except ValueError as exc:
         raise PrinterRegistrationError("올바른 IP 주소를 입력해 주세요.") from exc
-    if address.version != 4:
-        raise PrinterRegistrationError("현재 버전에서는 IPv4 주소만 직접 입력할 수 있습니다.")
     if address.is_unspecified or address.is_multicast or address.is_loopback:
         raise PrinterRegistrationError("프린터의 실제 네트워크 IP를 입력해 주세요.")
-    if protocol == "ipp":
-        uri = f"ipp://{address}/ipp/print"
+    if address.version == 6 and address.ipv4_mapped:
+        raise PrinterRegistrationError("IPv4 주소는 IPv4 형식으로 직접 입력해 주세요.")
+    if address.version == 6 and (address.is_link_local or address.scope_id):
+        raise PrinterRegistrationError("IPv6 링크 로컬/인터페이스 범위 주소는 현재 지원하지 않습니다.")
+
+    port_text = str(port).strip() if port is not None else ""
+    port_number = None
+    if port_text:
+        if len(port_text) > 5 or not port_text.isascii() or not port_text.isdecimal():
+            raise PrinterRegistrationError("포트는 1~65535 범위의 숫자로 입력해 주세요.")
+        port_number = int(port_text)
+        if not 1 <= port_number <= 65535:
+            raise PrinterRegistrationError("포트는 1~65535 범위의 숫자로 입력해 주세요.")
+
+    host = f"[{address.compressed}]" if address.version == 6 else str(address)
+    if protocol in {"ipp", "ipps"}:
+        if (
+            not path or len(path) > 256 or not path.startswith("/") or "//" in path
+            or any(segment in {".", ".."} for segment in path.split("/"))
+            or any(char.isspace() or ord(char) < 33 or ord(char) > 126
+                   or char in {"?", "#", "\\"} for char in path)
+            or any(
+                char == "%" and (index + 2 >= len(path)
+                                 or not all(c in "0123456789ABCDEFabcdef"
+                                            for c in path[index + 1:index + 3]))
+                for index, char in enumerate(path)
+            )
+        ):
+            raise PrinterRegistrationError("IPP 경로는 /로 시작하는 유효한 URL 경로여야 합니다.")
+        suffix = f":{port_number}" if port_number is not None else ""
+        uri = f"{protocol}://{host}{suffix}{path}"
     elif protocol == "socket":
-        uri = f"socket://{address}:9100"
+        uri = f"socket://{host}:{port_number or 9100}"
     else:
         raise PrinterRegistrationError("지원하지 않는 연결 방식입니다.")
     return DiscoveredPrinter(str(address), uri, protocol)
@@ -228,6 +258,9 @@ class DiscoveryService:
             connection.close()
         except OSError as exc:
             raise PrinterRegistrationError(f"프린터 연결에 실패했습니다: {exc}") from exc
+        if parsed.scheme == "ipps":
+            return (f"{parsed.hostname}:{port} TCP 연결 성공. "
+                    "TLS 인증·IPP 호환성·실제 인쇄는 별도로 확인해야 합니다.")
         return f"{parsed.hostname}:{port} 연결에 성공했습니다."
 
     def register(self, registration: Registration, *, approved: bool = False) -> str:
