@@ -49,7 +49,7 @@ def recovery_advice(
         lowered = error.casefold()
         if any(term in lowered for term in ("sudo", "password", "permission", "권한")):
             guidance = "sudo 권한을 확인한 뒤 '드라이버 다시 확인'을 눌러 주세요."
-        elif any(term in lowered for term in ("resolve", "network", "timeout", "connection", "네트워크", "시간 초과")):
+        elif any(term in lowered for term in ("resolve", "resolving", "network", "timeout", "connection", "네트워크", "시간 초과")):
             guidance = "Linux의 인터넷 연결을 확인한 뒤 '드라이버 다시 확인'을 눌러 주세요."
         elif any(term in lowered for term in ("sha-256", "해시", "checksum")):
             guidance = "다운로드 파일 검증에 실패했습니다. 검증되지 않은 드라이버는 설치하지 않습니다."
