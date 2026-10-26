@@ -278,3 +278,19 @@ def test_cups_failure_without_fallback_does_not_claim_no_printers():
     service = DiscoveryService(runner=runner, which=lambda _: "ippfind")
     with pytest.raises(PrinterRegistrationError, match="Forbidden"):
         service.discover()
+
+
+def test_resolved_ipp_is_not_dropped_when_cups_results_hit_limit():
+    cups = "".join(
+        f"network dnssd://Printer{i}._ipp._tcp.local/\n"
+        for i in range(MAX_DISCOVERED_DEVICES)
+    )
+
+    def runner(command, **kwargs):
+        if command == ["lpinfo", "-v"]:
+            return CompletedProcess(command, 0, cups, "")
+        return CompletedProcess(command, 0, "ipp://resolved.local/ipp/print\n", "")
+
+    devices = DiscoveryService(runner=runner, which=lambda _: "ippfind").discover()
+    assert len(devices) == MAX_DISCOVERED_DEVICES
+    assert devices[0].uri == "ipp://resolved.local/ipp/print"
