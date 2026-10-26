@@ -55,6 +55,7 @@ def make_vendor_zip(monkeypatch, ppd=None, filter_data=None):
 def test_exact_identity_and_architecture(monkeypatch):
     assert uld.supports_samsung_uld(identity())
     assert not uld.supports_samsung_uld(identity(source="검색된 이름(미검증)"))
+    assert uld.supports_samsung_uld(identity(source="사용자 확인(명시적 선택)"))
     assert not uld.supports_samsung_uld(identity(model="SL-M2030"))
     monkeypatch.setattr(uld.platform, "machine", lambda: "x86_64")
     assert uld.vendor_architecture_ok()
