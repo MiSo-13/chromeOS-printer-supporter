@@ -12,6 +12,10 @@ from typing import Callable
 import re
 
 from .identification import PrinterIdentity
+from .samsung_uld import (
+    SAMSUNG_ULD_URL, SAMSUNG_ULD_SHA256, SamsungInstallResult,
+    install_samsung_uld, supports_samsung_uld, vendor_architecture_ok,
+)
 
 # 다음 링크는 제조사 공식 사이트 및 배포판 문서에서 개별 확인한 정적 주소입니다.
 # 감지된 프린터 이름을 URL에 삽입하거나 임의의 다운로드 주소를 열지 않습니다.
@@ -51,6 +55,9 @@ class DriverInstallPlan:
     package_note: str
     package_source: str | None = None
     package_evidence: str | None = None
+    source_kind: str = "apt"          # apt | samsung-uld
+    download_url: str | None = None
+    download_sha256: str | None = None
 
     @property
     def can_install(self) -> bool:
@@ -111,9 +118,11 @@ class DriverInstallService:
         runner: Callable[..., CompletedProcess[str]] = run,
         *,
         os_release: str | Path = "/etc/os-release",
+        vendor_installer: Callable[..., SamsungInstallResult] = install_samsung_uld,
     ):
         self.runner = runner
         self.os_release = Path(os_release)
+        self.vendor_installer = vendor_installer
 
     def _run(self, args: list[str], timeout: int = 20) -> CompletedProcess[str]:
         try:
@@ -139,6 +148,23 @@ class DriverInstallService:
 
     def plan(self, identity: PrinterIdentity) -> DriverInstallPlan:
         title, url, note = official_support_for(identity)
+        # 직접 확인한 SL-M2030W는 삼성 공식 ZIP을 고정 SHA로 검증해
+        # x86_64 CUPS PPD/필터만 설치합니다 (제조사 스크립트 실행 없음).
+        if supports_samsung_uld(identity):
+            supported = vendor_architecture_ok()
+            return DriverInstallPlan(
+                identity.manufacturer, identity.name, title, url, note,
+                "samsung-uld-m2030w",
+                "available" if supported else "unavailable",
+                (
+                    "삼성 공식 파일에서 x86_64 CUPS 필터와 M203x PPD를 확인했습니다. "
+                    "사용자 승인 후 다운로드·검증·설치합니다. ARM은 지원하지 않습니다."
+                    if supported else
+                    "삼성 공식 ULD에는 arm64 CUPS 필터가 없어 자동 설치할 수 없습니다."
+                ),
+                SAMSUNG_ULD_URL, "삼성 공식 M203x Linux 드라이버",
+                "samsung-uld", SAMSUNG_ULD_URL, SAMSUNG_ULD_SHA256,
+            )
         candidate = distro_package_for(identity)
         package = candidate.package if candidate else None
         if package is None:
@@ -178,9 +204,25 @@ class DriverInstallService:
     def install(
         self, identity: PrinterIdentity, plan: DriverInstallPlan,
         *, approved: bool = False,
-    ) -> str:
+    ) -> str | SamsungInstallResult:
         if not approved:
             raise DriverInstallError("사용자 승인 없이 드라이버를 설치할 수 없습니다.")
+        if plan.source_kind == "samsung-uld":
+            if (
+                not supports_samsung_uld(identity) or not vendor_architecture_ok()
+                or plan.manufacturer != identity.manufacturer
+                or plan.model_name != identity.name
+                or not plan.can_install or plan.package != "samsung-uld-m2030w"
+                or plan.download_url != SAMSUNG_ULD_URL
+                or plan.download_sha256 != SAMSUNG_ULD_SHA256
+            ):
+                raise DriverInstallError("삼성 공식 드라이버의 설치 계획이 유효하지 않습니다.")
+            current = self.plan(identity)
+            if current != plan:
+                raise DriverInstallError("삼성 드라이버 설치 계획이 변경되어 다시 확인해야 합니다.")
+            return self.vendor_installer(identity, approved=True)
+        if plan.source_kind != "apt":
+            raise DriverInstallError("지원하지 않는 드라이버 설치 경로입니다.")
         package = package_for_identity(identity)
         if (
             not package or package not in ALLOWLIST
