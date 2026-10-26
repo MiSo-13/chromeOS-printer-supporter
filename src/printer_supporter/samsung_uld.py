@@ -157,6 +157,20 @@ def install_samsung_uld(
         raise VendorDriverError("기존 CUPS 필터가 달라서 덮어쓰지 않습니다.")
     if ppd_path.exists() and ppd_path.read_bytes() != ppd_data:
         raise VendorDriverError("기존 PPD 파일이 달라서 덮어쓰지 않습니다.")
+    # 필터의 ELF DT_NEEDED에 libcupsimage.so.2가 명시되어 있습니다.
+    # 설치 전 이미 확인한 명령을 실행합니다 (sudo 비대화식, 스크립트 실행 없음).
+    try:
+        dependency = runner(
+            ["sudo", "-n", "apt-get", "install", "-y", "--no-install-recommends", "libcupsimage2"],
+            capture_output=True, text=True, check=False, timeout=240,
+        )
+    except OSError as exc:
+        raise VendorDriverError("필터 의존성(libcupsimage2) 설치를 시작할 수 없습니다.") from exc
+    if dependency.returncode:
+        raise VendorDriverError(
+            "필터 의존성(libcupsimage2) 설치 실패: "
+            + (dependency.stderr or dependency.stdout or "권한 확인 필요")[-400:]
+        )
     # 실제 CUPS가 로드하는 filter 경로만 sudo 설치. 제조사 쉘 파일은 실행하지 않음.
     with TemporaryDirectory(prefix="samsung-uld-") as temp:
         source = Path(temp) / FILTER_NAME
