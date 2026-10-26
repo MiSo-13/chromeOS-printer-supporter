@@ -19,9 +19,11 @@
 
 **다운로드는 자동으로 시작하지 않습니다.** 모델과 APT 패키지를 찾으면 먼저 설치 내용을 보여주고, 사용자가 승인했을 때 패키지를 다운로드·설치합니다. 설치 후에도 CUPS에서 실제 모델이 확인돼야 사용할 수 있습니다.
 
-## Samsung SL-M2030W
+## Samsung SL-M2030W / M203x Series
 
-[삼성 공식 지원 페이지](https://www.samsung.com/sec/support/model/SL-M2030W/)에 Linux 드라이버가 있습니다. 다만 SpliX에서 이 모델의 정확한 호환성은 확인되지 않았습니다. 현재 앱은 공식 페이지를 안내하며 **삼성 제공 ZIP 파일의 자동 설치는 지원하지 않습니다.**
+[삼성 공식 지원 페이지](https://www.samsung.com/sec/support/model/SL-M2030W/)의 Linux 드라이버 파일을 확인했습니다. **x86_64 Chromebook**에서 IPP 모델명이 `Samsung SL-M2030W` 또는 `Samsung M203x Series`로 확인되면, 사용자가 승인한 뒤 공식 ZIP 다운로드·SHA-256 검증·CUPS 필터 및 PPD 설치를 진행합니다.
+
+삼성 설치 스크립트는 실행하지 않습니다. **ARM Chromebook은 공식 파일에 arm64 필터가 없어 자동 설치가 불가능합니다.** 드라이버 설치 후에도 프린터 등록은 따로 승인해야 하며 실제 인쇄는 별도 확인이 필요합니다.
 
 ## 우선 안내 모델
 
