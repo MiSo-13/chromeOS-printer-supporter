@@ -179,6 +179,7 @@ class PrinterSetupWidget(QWidget):
         self.model_choice.setAccessibleName("설치된 CUPS 모델")
         self.model_choice.addItem("일치하는 모델을 먼저 확인하세요", None)
         self.model_choice.setEnabled(False)
+        self.model_choice.activated.connect(self._recovery_cups_model_selected)
         form.addRow("CUPS 모델", self.model_choice)
         self.recommendation_summary = QLabel("드라이버 추천: 프린터를 선택해 주세요.")
         self.recommendation_summary.setWordWrap(True)
@@ -355,6 +356,15 @@ class PrinterSetupWidget(QWidget):
         self.status.setText(
             "IPP Everywhere를 선택했습니다. 실제 인쇄 가능 여부는 미확인입니다. "
             "등록 내용을 확인하고 별도로 승인해 주세요."
+        )
+
+    def _recovery_cups_model_selected(self, _index: int):
+        if self.driver.currentData() != "model" or not self.model_choice.currentData():
+            return
+        self._driver_user_edited = True
+        self._clear_recovery()
+        self.status.setText(
+            "CUPS 모델을 선택했습니다. 실제 프린터와 일치하는지 확인한 후 등록해 주세요."
         )
 
     def choose_recovery_cups(self):
@@ -616,11 +626,22 @@ class PrinterSetupWidget(QWidget):
             else "설치할 배포판 패키지 없음"
         )
         if self.driver_recommendation is not None:
-            if resolution.route in {"installed", "ipp"}:
+            if (
+                resolution.route in {"installed", "ipp"}
+                and self._recovery_issue in {"missing", "multiple", "unavailable", "no-candidate"}
+            ):
                 self._clear_recovery()
-            elif resolution.route == "apt-installed" and not self._recovery_issue:
+            elif (
+                resolution.route == "apt-installed"
+                and not self._recovery_issue
+                and not self._driver_user_edited
+            ):
                 self._show_recovery("missing")
-            elif resolution.route in {"manual", "vendor"} and not self._recovery_issue:
+            elif (
+                resolution.route in {"manual", "vendor"}
+                and not self._recovery_issue
+                and not self._driver_user_edited
+            ):
                 self._show_recovery("no-candidate")
             elif self._recovery_issue:
                 self._update_recovery()
