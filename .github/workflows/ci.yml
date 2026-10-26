@@ -24,34 +24,5 @@ jobs:
         run: python -m pip install -e '.[test]'
       - name: 문법 확인
         run: python -m compileall -q src tests
-      - name: 삼성 ULD ELF 의존성·PPD 구성 확인 (진단 후 제거)
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          import urllib.request, zipfile, io, tarfile, hashlib, subprocess, tempfile, pathlib
-          url="https://downloadcenter.samsung.com/content/DR/201911/20191101152153376/ULDLINUX_V1.00.39.07_01.24.zip"
-          with urllib.request.urlopen(url,timeout=40) as resp:
-              raw=resp.read(24000000)
-          assert hashlib.sha256(raw).hexdigest()=="cc112359d77793ba8cd645030b365884103bdba0bcc0df8a9dd199328639d74b"
-          with zipfile.ZipFile(io.BytesIO(raw)) as z:
-              inner=z.read("ULDLINUX_V1.00.39.07_01.24/uld-samsung.tar.gz")
-          with tarfile.open(fileobj=io.BytesIO(inner),mode="r:gz") as t:
-              for name in ["uld/x86_64/rastertospl","uld/noarch/share/ppd/Samsung_M203x_Series.ppd",
-                           "uld/x86_64/libscmssc.so","uld/noarch/printer.pkg",
-                           "uld/noarch/license/eula.txt"]:
-                  file=t.extractfile(name)
-                  if not file: continue
-                  data=file.read(2500000)
-                  print("FILE",name,"size",len(data),"sha256",hashlib.sha256(data).hexdigest())
-                  if name.endswith(".ppd"):
-                      print("PPD", "\\n".join(x for x in data.decode("latin-1").splitlines() if x.startswith(("*NickName:","*ModelName:","*cupsFilter:","*Manufacturer:","*1284DeviceID:"))))
-                  elif name.endswith("printer.pkg"):print("PKG",data[:1500].decode("latin-1"))
-                  elif name.endswith("eula.txt"):print("EULA START",data[:500].decode("latin-1"))
-                  elif name.endswith("rastertospl"):
-                      with tempfile.TemporaryDirectory() as d:
-                          p=pathlib.Path(d)/"filter";p.write_bytes(data)
-                          o=subprocess.run(["readelf","-h","-d",str(p)],capture_output=True,text=True)
-                          print("ELF",o.returncode,o.stdout[:9000])
-          PY
       - name: 단위 테스트
         run: pytest -q
