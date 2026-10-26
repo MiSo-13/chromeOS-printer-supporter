@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import StringIO
+from itertools import islice
 from ipaddress import ip_address
 from pathlib import Path
 from subprocess import CompletedProcess, TimeoutExpired, run
 from typing import Callable
 from urllib.parse import unquote, urlsplit
 import re
+import shutil
 import socket
 
 ALLOWED_SCHEMES = {"ipp", "ipps", "dnssd", "socket"}
 QUEUE_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,63}$")
+MAX_DISCOVERED_DEVICES = 96
+MAX_DISCOVERY_LINES = 512
+MAX_PRINTER_URI = 1024
 
 
 class PrinterRegistrationError(RuntimeError):
@@ -36,8 +42,8 @@ class Registration:
 
 
 def parse_discovered_devices(output: str) -> list[DiscoveredPrinter]:
-    devices = {}
-    for line in output.splitlines():
+    devices: dict[str, DiscoveredPrinter] = {}
+    for line in islice(StringIO(output), MAX_DISCOVERY_LINES):
         # lpinfo -v 결과 예: network dnssd://Printer._ipp._tcp.local/
         parts = line.strip().split(maxsplit=1)
         if len(parts) != 2 or parts[0] != "network":
@@ -46,9 +52,48 @@ def parse_discovered_devices(output: str) -> list[DiscoveredPrinter]:
         parsed = urlsplit(uri)
         if parsed.scheme not in ALLOWED_SCHEMES or not parsed.netloc:
             continue
+        if not _safe_discovery_uri(uri, parsed):
+            continue
+        if len(devices) >= MAX_DISCOVERED_DEVICES:
+            break
+        # URI의 hostname 속성은 소문자로 변환되므로 원본 서비스 표시명을 사용합니다.
         name = unquote(parsed.netloc).split("._", 1)[0].replace("-", " ")
-        devices[uri] = DiscoveredPrinter(name or "네트워크 프린터", uri, parsed.scheme)
+        devices[uri] = DiscoveredPrinter(name[:160] or "네트워크 프린터", uri, parsed.scheme)
     return sorted(devices.values(), key=lambda value: value.name.lower())
+
+
+def _safe_discovery_uri(uri: str, parsed=None) -> bool:
+    """외부 검색 결과로부터 명령/IPP 조회에 사용할 URI만 보수적으로 허용."""
+    if not uri or len(uri) > MAX_PRINTER_URI or any(
+        c.isspace() or ord(c) < 32 for c in uri
+    ):
+        return False
+    try:
+        parsed = parsed or urlsplit(uri)
+        return bool(
+            parsed.scheme in ALLOWED_SCHEMES and parsed.hostname
+            and not parsed.username and not parsed.password
+            and parsed.port != 0
+        )
+    except ValueError:
+        return False
+
+
+def parse_ippfind_devices(output: str) -> list[DiscoveredPrinter]:
+    """ippfind가 출력한 실제 IPP/IPPS URI만 사용하며 모델명을 추정하지 않습니다."""
+    found: dict[str, DiscoveredPrinter] = {}
+    for line in islice(StringIO(output), MAX_DISCOVERY_LINES):
+        uri = line.strip()
+        if not _safe_discovery_uri(uri):
+            continue
+        parsed = urlsplit(uri)
+        if parsed.scheme not in {"ipp", "ipps"} or uri in found:
+            continue
+        # 호스트 이름은 확인된 프린터 모델명이 아닙니다.
+        found[uri] = DiscoveredPrinter((parsed.hostname or "IPP 프린터")[:160], uri, parsed.scheme)
+        if len(found) >= MAX_DISCOVERED_DEVICES:
+            break
+    return sorted(found.values(), key=lambda device: device.name.lower())
 
 
 def manual_printer(ip: str, *, protocol: str) -> DiscoveredPrinter:
@@ -113,9 +158,11 @@ class DiscoveryService:
         self,
         runner: Callable[..., CompletedProcess[str]] = run,
         connector: Callable[..., socket.socket] = socket.create_connection,
+        which: Callable[[str], str | None] = shutil.which,
     ):
         self.runner = runner
         self.connector = connector
+        self.which = which
 
     def _run(self, command: list[str], timeout: int = 20) -> str:
         try:
@@ -131,8 +178,42 @@ class DiscoveryService:
         return result.stdout
 
     def discover(self) -> list[DiscoveredPrinter]:
-        # CUPS 및 mDNS의 발견 결과만 조회하며 IP 대역 전체를 스캔하지 않습니다.
-        return parse_discovered_devices(self._run(["lpinfo", "-v"]))
+        """사용자가 요청한 시점에만 CUPS와 짧은 DNS-SD 탐색을 실행합니다.
+
+        lpinfo의 dnssd:// 서비스 이름만으로는 IPP 모델을 확인할 수 없으므로
+        ippfind에서 실제 IPP 주소를 찾으면 함께 표시합니다. 네트워크 대역을
+        스캔하거나 백그라운드에서 반복 실행하지 않습니다.
+        """
+        cups_error: PrinterRegistrationError | None = None
+        try:
+            devices = parse_discovered_devices(self._run(["lpinfo", "-v"], timeout=10))
+        except PrinterRegistrationError as exc:
+            cups_error = exc
+            devices = []
+
+        # 이미 실제 IPP URI가 있다면 중복 DNS-SD 검색을 생략합니다.
+        if not any(device.scheme in {"ipp", "ipps"} for device in devices):
+            ippfind = self.which("ippfind")
+            if ippfind:
+                try:
+                    resolved = parse_ippfind_devices(self._run(
+                        [ippfind, "-T", "2", "_ipp._tcp", "_ipps._tcp", "--print"],
+                        timeout=7,
+                    ))
+                    known = {device.uri for device in devices}
+                    devices.extend(device for device in resolved if device.uri not in known)
+                except PrinterRegistrationError:
+                    # ippfind이 없거나 이 네트워크에서 DNS-SD가 막혀 있어도
+                    # CUPS 결과와 IP 직접 입력은 유지합니다.
+                    pass
+
+        if not devices and cups_error is not None:
+            raise cups_error
+        # 결과가 많을 때 실제 IPP 모델 조회가 가능한 주소를 우선 표시합니다.
+        return sorted(
+            devices,
+            key=lambda value: (value.scheme not in {"ipp", "ipps"}, value.name.lower()),
+        )[:MAX_DISCOVERED_DEVICES]
 
     def probe(self, device: DiscoveredPrinter) -> str:
         parsed = urlsplit(device.uri)

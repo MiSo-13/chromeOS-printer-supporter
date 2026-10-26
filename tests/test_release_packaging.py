@@ -79,6 +79,7 @@ def test_build_deb_from_mocked_bundle_and_verify_contents(tmp_path):
     ).stdout
     assert f"Architecture: {arch}" in info
     assert "Depends: " in info and "cups-client" in info
+    assert "cups-ipp-utils" in info.split("Suggests:", 1)[0]
     assert "Suggests: libreoffice" in info
     assert "Python" not in info  # 별도 Python 설치를 요구하지 않습니다.
 
