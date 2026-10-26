@@ -19,6 +19,7 @@ from .discovery import (
 from .identification import PrinterIdentity, identify_printer, unknown_identity
 from .dialogs import confirm_action, show_guide
 from .support_catalog import assess_printer
+from .driver_workflow import resolve_driver
 from .driver_recommendation import DriverAdvisor, DriverRecommendation
 from .driver_installation import (
     DriverInstallPlan, DriverInstallService, official_support_for, package_for_identity,
@@ -174,7 +175,7 @@ class PrinterSetupWidget(QWidget):
         )
         self.recommendation_detail.setWordWrap(True)
         form.addRow("", self.recommendation_detail)
-        self.install_panel = QGroupBox("드라이버 확보 및 설치 안내")
+        self.install_panel = QGroupBox("드라이버 자동 탐색")
         install_layout = QVBoxLayout(self.install_panel)
         self.official_support_label = QLabel("제조사 공식 지원 페이지를 확인합니다.")
         self.official_support_label.setWordWrap(True)
@@ -183,7 +184,11 @@ class PrinterSetupWidget(QWidget):
         self.official_support_button.setEnabled(False)
         self.official_support_button.clicked.connect(self._open_official_support)
         install_layout.addWidget(self.official_support_button)
-        self.install_status_label = QLabel("배포판 패키지 지원 여부를 조회합니다.")
+        self.resolution_status = QLabel("IPP → 설치된 CUPS → 배포판 APT → 제조사 드라이버")
+        self.resolution_status.setObjectName("driverResolution")
+        self.resolution_status.setWordWrap(True)
+        install_layout.addWidget(self.resolution_status)
+        self.install_status_label = QLabel("드라이버를 확인하고 있습니다.")
         self.install_status_label.setWordWrap(True)
         install_layout.addWidget(self.install_status_label)
         self.install_button = QPushButton("확인된 배포판 드라이버 설치")
@@ -191,8 +196,7 @@ class PrinterSetupWidget(QWidget):
         self.install_button.clicked.connect(self.install_driver)
         install_layout.addWidget(self.install_button)
         install_note = QLabel(
-            "제조사 다운로드 파일은 직접 확인해야 하며 자동 실행하지 않습니다. "
-            "배포판 패키지는 호환 모델 확인과 별도 승인 후에만 설치합니다."
+            "드라이버 설치는 실행 내용 확인 후 승인해야 진행됩니다."
         )
         install_note.setWordWrap(True)
         install_layout.addWidget(install_note)
@@ -449,8 +453,33 @@ class PrinterSetupWidget(QWidget):
         self.official_support_label.setText("프린터 모델의 공식 지원 페이지를 확인합니다.")
         self.official_support_button.setEnabled(False)
         self.official_support_button.setToolTip("")
-        self.install_status_label.setText("배포판 패키지 지원 여부를 확인하는 중…")
+        self.install_status_label.setText("드라이버 후보 확인 중…")
+        self.resolution_status.setText("IPP → CUPS → APT → 제조사")
         self.install_button.setEnabled(False)
+
+    def _refresh_driver_resolution(self):
+        """설치 우선순위와 후속 작업을 화면에 표시합니다."""
+        resolution = resolve_driver(self.driver_recommendation, self.install_plan)
+        if (
+            self.driver_recommendation is None and self.identity_result
+            and self.current_device
+            and self.current_device.scheme in {"ipp", "ipps"}
+            and self.identity_result.driverless in {"reported", "candidate"}
+        ):
+            self.install_button.setEnabled(False)
+            self.resolution_status.setText("IPP 기능 확인 중…")
+            return
+        self.resolution_status.setText(resolution.summary)
+        self.install_status_label.setText(resolution.details)
+        self.install_status_label.setToolTip(
+            self.install_plan.package_note if self.install_plan else resolution.details
+        )
+        self.install_button.setEnabled(resolution.can_install and not self._install_busy)
+        self.install_button.setText(
+            f"{self.install_plan.package} 설치"
+            if resolution.can_install and self.install_plan
+            else "설치할 배포판 패키지 없음"
+        )
 
     def _install_plan_ready(self, result):
         generation, device, plan = result
@@ -462,15 +491,7 @@ class PrinterSetupWidget(QWidget):
         )
         self.official_support_button.setEnabled(plan.support_url is not None)
         self.official_support_button.setToolTip(plan.support_url or "")
-        self.install_status_label.setText(
-            f"{plan.package}: {plan.package_status}" if plan.package
-            else "자동 설치 후보 없음 · 공식 지원 페이지 확인"
-        )
-        self.install_status_label.setToolTip(plan.package_note)
-        self.install_button.setEnabled(plan.can_install and not self._install_busy)
-        self.install_button.setText(
-            f"{plan.package} 설치" if plan.package else "확인된 배포판 드라이버 없음"
-        )
+        self._refresh_driver_resolution()
 
     def _install_plan_failed(self, generation, device, message):
         if generation != self.identity_generation or device != self.current_device:
@@ -478,7 +499,8 @@ class PrinterSetupWidget(QWidget):
         self.install_plan = None
         self.official_support_button.setEnabled(False)
         self.install_button.setEnabled(False)
-        self.install_status_label.setText("드라이버 설치 경로 확인 실패: " + message[:250])
+        self.install_status_label.setText("드라이버 확인 실패: " + message[:250])
+        self.resolution_status.setText("수동 드라이버 확인 필요")
 
     def _open_official_support(self):
         plan = self.install_plan
@@ -510,6 +532,8 @@ class PrinterSetupWidget(QWidget):
             details=(
                 f"프린터 모델: {identity.name}\n"
                 f"설치 패키지: {plan.package}\n"
+                f"지원 근거: {plan.package_evidence or 'Debian/Ubuntu 배포판'}\n"
+                f"모델 목록: {plan.package_source or '-'}\n"
                 f"실행 명령: {command}\n\n"
                 "설치 위치: Crostini Linux 컨테이너\n"
                 "패키지 출처: 현재 설정된 Debian/Ubuntu APT 저장소\n"
@@ -542,8 +566,8 @@ class PrinterSetupWidget(QWidget):
                 bool(self.install_plan and self.install_plan.can_install)
             )
             return
-        self.status.setText(message)
-        QMessageBox.information(self, "배포판 드라이버 설치 확인", message)
+        self.status.setText("설치 완료 · CUPS에서 일치하는 드라이버를 다시 확인합니다.")
+        QMessageBox.information(self, "드라이버 패키지 설치", message)
         self.identify_current()
 
     def _driver_install_failed(self, generation, device, message):
@@ -598,6 +622,8 @@ class PrinterSetupWidget(QWidget):
             if index >= 0:
                 self.driver.setCurrentIndex(index)
         self._driver_changed()
+        if self.install_plan is not None:
+            self._refresh_driver_resolution()
 
     def _recommendation_failed(
         self, generation: int, device: DiscoveredPrinter, message: str,
@@ -612,6 +638,8 @@ class PrinterSetupWidget(QWidget):
         self.recommendation_detail.setText(
             "CUPS 드라이버 목록을 읽지 못했습니다. PPD 파일을 직접 지정할 수 있습니다."
         )
+        if self.install_plan is not None:
+            self._refresh_driver_resolution()
 
     def _identity_failed(self, generation: int, device: DiscoveredPrinter, message: str):
         if generation == self.identity_generation and self.current_device == device:
