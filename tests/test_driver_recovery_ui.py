@@ -65,7 +65,13 @@ def test_install_failure_recovery_actions_do_not_install_or_register(tmp_path):
         widget.recovery_cups_button.click()
         assert widget.driver.currentData() == "model"
         assert widget._recovery_issue == "missing"
+        widget.model_choice.addItem("Samsung ML-1660", "ml1660.ppd")
+        widget.model_choice.setCurrentIndex(widget.model_choice.findData("ml1660.ppd"))
+        widget.model_choice.activated.emit(widget.model_choice.currentIndex())
+        assert widget._recovery_issue is None
+        assert widget.model_choice.currentData() == "ml1660.ppd"
 
+        widget._show_recovery("missing")
         ppd = Path("REPLACE_PPD")
         ppd.write_text('*PPD-Adobe: "4.3"\\n')
         QFileDialog.getOpenFileName = lambda *a, **kw: (str(ppd), "CUPS PPD")
@@ -80,6 +86,12 @@ def test_install_failure_recovery_actions_do_not_install_or_register(tmp_path):
         assert widget._recovery_issue == "registration-failed"
         assert not widget.recovery_panel.isHidden()
         assert widget.driver.currentData() == "ppd"
+        widget.driver_recommendation = DriverRecommendation(
+            "everywhere", None, (), "", "", True,
+        )
+        widget._refresh_driver_resolution()
+        # 등록 실패는 자동 추천 재조회만으로 해결됐다고 취급하지 않습니다.
+        assert widget._recovery_issue == "registration-failed"
         widget.close()
     """).replace("REPLACE_PPD", str(tmp_path / "sample.ppd"))
     result = subprocess.run(
