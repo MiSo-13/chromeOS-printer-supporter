@@ -1,7 +1,7 @@
-"""공식 제조사 지원 페이지와 명시적 승인 기반 배포판 드라이버 설치.
+"""검증 가능한 모델별 APT 드라이버 탐색과 승인 기반 설치.
 
-제조사 제공 다운로드 바이너리/스크립트는 절대로 앱에서 실행하지 않습니다.
-Linux 배포판 저장소의 사전에 허용된 패키지만 설치할 수 있습니다.
+브랜드만 보고 호환 패키지를 추정하지 않으며, 공식 저장소 패키지만 설치합니다.
+제조사 ZIP/바이너리의 자동 실행은 별도의 검증 전까지 보류합니다.
 """
 from __future__ import annotations
 
@@ -26,21 +26,18 @@ OFFICIAL_SUPPORT = {
 SAMSUNG_SL_M2030W = "https://www.samsung.com/sec/support/model/SL-M2030W/"
 BROTHER_BRLASER_DOCS = "https://packages.debian.org/bookworm/printer-driver-brlaser"
 
-# Debian 패키지 메타데이터에 호환이 명시된 모델만 나열합니다.
-# 'Series'는 모델 식별 정규화 과정에서 임의로 생략하지 않습니다.
-BROLASER_MODELS = frozenset({
-    "DCP-1510", "DCP-1602", "DCP-7030", "DCP-7040", "DCP-7055",
-    "DCP-7055W", "DCP-7060D", "DCP-7065DN", "DCP-7080",
-    "DCP-L2500D", "DCP-L2540DW", "DCP-L2710DW",
-    "HL-1110 SERIES", "HL-1200 SERIES", "HL-L2300D SERIES",
-    "HL-L2320D SERIES", "HL-L2340D SERIES", "HL-L2360D SERIES",
-    "MFC-1910W", "MFC-7240", "MFC-7360N", "MFC-7365DN",
-    "MFC-7840W", "MFC-L2710DW",
-})
-# 호환이 명확한 모델 하나의 배포판 패키지부터 지원하고, 임의의
-# 패키지 이름이나 서드파티 저장소를 모델에서 유추하지 않습니다.
-ALLOWLIST = {"printer-driver-brlaser": "Brother"}
+# 모델별 배포판 드라이버 판단은 한 곳에서 관리합니다.
+from .driver_package_catalog import (
+    BROTHER_BR_LASER as BROLASER_MODELS,
+    distro_package_for,
+)
 
+ALLOWLIST = {
+    "printer-driver-brlaser": "Brother",
+    "printer-driver-splix": ("Samsung", "Xerox", "Dell", "Lexmark"),
+    "printer-driver-foo2zjs": ("HP", "Minolta"),
+    "printer-driver-gutenprint": ("Epson", "Canon"),
+}
 
 @dataclass(frozen=True)
 class DriverInstallPlan:
@@ -52,6 +49,8 @@ class DriverInstallPlan:
     package: str | None
     package_status: str       # available, installed, unavailable, unknown, not_applicable
     package_note: str
+    package_source: str | None = None
+    package_evidence: str | None = None
 
     @property
     def can_install(self) -> bool:
@@ -67,16 +66,9 @@ def _normalized_name(name: str) -> str:
 
 
 def package_for_identity(identity: PrinterIdentity) -> str | None:
-    """실제 IPP 응답에서 확인된 Brother 지원 모델만 배포판 설치 대상으로 지정."""
-    if identity.source != "IPP 장치 응답" or identity.manufacturer != "Brother":
-        return None
-    reported = _normalized_name(identity.name)
-    if not reported.startswith("BROTHER "):
-        return None
-    model = reported[len("BROTHER "):]
-    if model in BROLASER_MODELS:
-        return "printer-driver-brlaser"
-    return None
+    """검증된 IPP 모델과 공개 드라이버 모델 목록의 정확한 일치만 허용."""
+    candidate = distro_package_for(identity)
+    return candidate.package if candidate else None
 
 
 def official_support_for(identity: PrinterIdentity) -> tuple[str | None, str | None, str]:
@@ -147,13 +139,14 @@ class DriverInstallService:
 
     def plan(self, identity: PrinterIdentity) -> DriverInstallPlan:
         title, url, note = official_support_for(identity)
-        package = package_for_identity(identity)
+        candidate = distro_package_for(identity)
+        package = candidate.package if candidate else None
         if package is None:
             return DriverInstallPlan(
                 identity.manufacturer, identity.name, title, url, note,
                 None, "not_applicable",
-                "정확한 모델과 배포판 지원 근거가 없어 자동 설치할 패키지를 지정하지 않았습니다. "
-                "공식 지원 페이지 또는 기존 PPD 선택을 이용하세요.",
+                "배포판에서 확인된 모델별 드라이버가 없습니다. "
+                "IPP, 설치된 CUPS 모델 또는 제조사 다운로드를 확인하세요.",
             )
         try:
             self._verify_linux_distribution()
@@ -168,9 +161,8 @@ class DriverInstallService:
                 if policy.returncode == 0 and _candidate_available(policy.stdout):
                     status = "available"
                     text = (
-                        "설정된 Debian/Ubuntu APT 저장소에서 설치 가능한 "
-                        "printer-driver-brlaser 패키지를 확인했습니다. "
-                        "패키지의 모델 지원 문서: " + BROTHER_BRLASER_DOCS
+                        f"APT에서 {package} 설치 가능 · "
+                        f"{candidate.evidence}: {candidate.source_url}"
                     )
                 else:
                     status = "unavailable"
@@ -180,7 +172,7 @@ class DriverInstallService:
             text = str(exc)
         return DriverInstallPlan(
             identity.manufacturer, identity.name, title, url, note,
-            package, status, text,
+            package, status, text, candidate.source_url, candidate.evidence,
         )
 
     def install(
@@ -192,7 +184,10 @@ class DriverInstallService:
         package = package_for_identity(identity)
         if (
             not package or package not in ALLOWLIST
-            or ALLOWLIST[package] != identity.manufacturer
+            or identity.manufacturer not in (
+                (ALLOWLIST[package],) if isinstance(ALLOWLIST[package], str)
+                else ALLOWLIST[package]
+            )
             or plan.package != package or plan.model_name != identity.name
             or plan.manufacturer != identity.manufacturer
             or not plan.can_install
