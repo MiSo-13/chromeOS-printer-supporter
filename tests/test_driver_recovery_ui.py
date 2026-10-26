@@ -74,6 +74,12 @@ def test_install_failure_recovery_actions_do_not_install_or_register(tmp_path):
         assert widget.ppd_path.text() == str(ppd)
         assert widget._recovery_issue is None
         assert all(kind in {"warn", "refresh"} for kind, *_ in actions)
+
+        # 프린터 등록에 실패한 경우에도 임의로 드라이버를 바꾸지 않습니다.
+        widget._registration_failed("CUPS: unable to copy PPD file")
+        assert widget._recovery_issue == "registration-failed"
+        assert not widget.recovery_panel.isHidden()
+        assert widget.driver.currentData() == "ppd"
         widget.close()
     """).replace("REPLACE_PPD", str(tmp_path / "sample.ppd"))
     result = subprocess.run(
