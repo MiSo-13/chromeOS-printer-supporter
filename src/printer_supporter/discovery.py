@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import StringIO
+from itertools import islice
 from ipaddress import ip_address
 from pathlib import Path
 from subprocess import CompletedProcess, TimeoutExpired, run
@@ -41,7 +43,7 @@ class Registration:
 
 def parse_discovered_devices(output: str) -> list[DiscoveredPrinter]:
     devices: dict[str, DiscoveredPrinter] = {}
-    for line in output.splitlines()[:MAX_DISCOVERY_LINES]:
+    for line in islice(StringIO(output), MAX_DISCOVERY_LINES):
         # lpinfo -v 결과 예: network dnssd://Printer._ipp._tcp.local/
         parts = line.strip().split(maxsplit=1)
         if len(parts) != 2 or parts[0] != "network":
@@ -50,8 +52,10 @@ def parse_discovered_devices(output: str) -> list[DiscoveredPrinter]:
         parsed = urlsplit(uri)
         if parsed.scheme not in ALLOWED_SCHEMES or not parsed.netloc:
             continue
-        if not _safe_discovery_uri(uri, parsed) or len(devices) >= MAX_DISCOVERED_DEVICES:
+        if not _safe_discovery_uri(uri, parsed):
             continue
+        if len(devices) >= MAX_DISCOVERED_DEVICES:
+            break
         name = unquote(parsed.hostname or "").split("._", 1)[0].replace("-", " ")
         devices[uri] = DiscoveredPrinter(name[:160] or "네트워크 프린터", uri, parsed.scheme)
     return sorted(devices.values(), key=lambda value: value.name.lower())
@@ -77,7 +81,7 @@ def _safe_discovery_uri(uri: str, parsed=None) -> bool:
 def parse_ippfind_devices(output: str) -> list[DiscoveredPrinter]:
     """ippfind가 출력한 실제 IPP/IPPS URI만 사용하며 모델명을 추정하지 않습니다."""
     found: dict[str, DiscoveredPrinter] = {}
-    for line in output.splitlines()[:MAX_DISCOVERY_LINES]:
+    for line in islice(StringIO(output), MAX_DISCOVERY_LINES):
         uri = line.strip()
         if not _safe_discovery_uri(uri):
             continue
