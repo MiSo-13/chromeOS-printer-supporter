@@ -37,6 +37,7 @@ _RECOGNIZED_VENDORS = (
     ("Kyocera", "Kyocera"), ("Ricoh", "Ricoh"), ("Xerox", "Xerox"),
     ("Lexmark", "Lexmark"), ("OKI", "OKI"), ("Sharp", "Sharp"),
     ("Pantum", "Pantum"), ("Konica Minolta", "Konica Minolta"),
+    ("Minolta", "Minolta"), ("Dell", "Dell"),
 )
 _ATTRIBUTE_LINE = re.compile(
     r"^\s*(printer-make-and-model|printer-name|ipp-versions-supported|"
