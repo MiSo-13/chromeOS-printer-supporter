@@ -40,6 +40,15 @@ def resolve_driver(
             "모델 이름의 출처가 미확인되었거나 후보가 여러 개입니다. 목록에서 정확한 모델을 선택하세요.",
             False,
         )
+    if plan and plan.can_install and plan.source_kind == "samsung-uld":
+        return Resolution(
+            "vendor-download", "삼성 공식 Linux 드라이버 다운로드 가능",
+            f"출처: {plan.download_url}\n"
+            f"SHA-256: {plan.download_sha256}\n"
+            "x86_64 전용 CUPS 인쇄 필터·PPD를 설치합니다. "
+            "제조사 설치 스크립트는 실행하지 않습니다. 승인 후 다운로드가 시작됩니다.",
+            True,
+        )
     if plan and plan.can_install:
         return Resolution(
             "apt", f"호환 드라이버 후보: {plan.package}",
