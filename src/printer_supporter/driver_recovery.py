@@ -38,6 +38,12 @@ def recovery_advice(
     elif issue == "no-candidate":
         headline = "자동으로 사용할 드라이버를 찾지 못했습니다."
         guidance = "IPP 지원 여부를 확인하거나 제조사에서 제공한 PPD를 선택해 주세요."
+    elif issue == "registration-failed":
+        headline = "프린터 등록을 완료하지 못했습니다."
+        guidance = (
+            "먼저 연결 주소와 CUPS 오류를 확인하세요. 드라이버 방식이 맞지 않으면 "
+            "확인된 CUPS 드라이버나 제조사 PPD로 바꿔 다시 등록할 수 있습니다."
+        )
     else:
         headline = "드라이버 설치를 완료하지 못했습니다."
         lowered = error.casefold()
