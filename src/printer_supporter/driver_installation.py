@@ -85,9 +85,9 @@ def official_support_for(identity: PrinterIdentity) -> tuple[str | None, str | N
         return (
             "Samsung SL-M2030W 공식 다운로드",
             SAMSUNG_SL_M2030W,
-            "이 모델의 공식 지원 페이지에 Linux 드라이버가 게시되어 있습니다. "
-            "운영체제·아키텍처·라이선스를 확인한 뒤 수동으로 받으세요. "
-            "앱은 다운로드한 압축파일·스크립트를 자동 실행하지 않습니다.",
+            "공식 Linux 드라이버를 확인했습니다. x86_64 환경에서는 "
+            "설치 내용을 승인하면 공식 파일을 다운로드하고 해시를 확인한 후 "
+            "인쇄 필터와 PPD만 설치합니다. 제조사 설치 스크립트는 실행하지 않습니다.",
         )
     support = OFFICIAL_SUPPORT.get(identity.manufacturer or "")
     if support is None:
