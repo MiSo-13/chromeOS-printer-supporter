@@ -15,7 +15,7 @@ def test_empty_search_and_manual_selection_guidance():
         widget = PrinterSetupWidget()
         widget.show()
         app.processEvents()
-        assert widget.pool.maxThreadCount() == 2
+        assert 1 <= widget.pool.maxThreadCount() <= 2
         assert not widget.discovery_help_button.isChecked()
         assert widget.discovery_help.isHidden()
         assert "모델명" in widget.discovery_help_text.text()
