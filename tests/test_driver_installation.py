@@ -4,7 +4,7 @@ from subprocess import CompletedProcess, TimeoutExpired
 import pytest
 
 from printer_supporter.driver_installation import (
-    DriverInstallError, DriverInstallService, SAMSUNG_SL_M2030W,
+    AptInstallResult, DriverInstallError, DriverInstallService, SAMSUNG_SL_M2030W,
     BROLASER_MODELS, official_support_for, package_for_identity,
 )
 from printer_supporter.identification import PrinterIdentity
@@ -35,6 +35,8 @@ def make_service(tmp_path, *, installed=False, candidate=True, apt_result=0):
             )
         if args[:3] == ["sudo", "-n", "apt-get"]:
             return CompletedProcess(args, apt_result, "", "sudo: a password is required" if apt_result else "")
+        if args == ["lpinfo", "-m"]:
+            return CompletedProcess(args, 0, "brother.ppd Brother HL-L2340D series\n", "")
         raise AssertionError(f"unexpected command: {args}")
 
     return DriverInstallService(runner=runner, os_release=os_release), calls
@@ -141,14 +143,18 @@ def test_install_uses_fixed_allowlisted_package_and_checks_result(tmp_path):
     service, calls = make_service(tmp_path)
     plan = service.plan(printer)
     message = service.install(printer, plan, approved=True)
-    assert "다시 조회" in message
+    assert isinstance(message, AptInstallResult)
+    assert message.cups_status == "matched"
+    assert message.matched_model_id == "brother.ppd"
+    assert "CUPS 목록" in message.message
     sudo = [command for command, _ in calls if command[0] == "sudo"]
     assert sudo == [
         ["sudo", "-n", "apt-get", "install", "-y",
          "--no-install-recommends", "printer-driver-brlaser"]
     ]
     assert not any(x[0][0] in {"lp", "lpadmin", "curl", "wget", "bash"} for x in calls)
-    assert calls[-1][0][:2] == ["dpkg-query", "-W"]
+    assert calls[-2][0][:2] == ["dpkg-query", "-W"]
+    assert calls[-1][0] == ["lpinfo", "-m"]
 
 
 def test_install_does_not_retry_privilege_failure(tmp_path):

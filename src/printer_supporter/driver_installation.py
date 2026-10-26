@@ -12,6 +12,7 @@ from typing import Callable
 import re
 
 from .identification import PrinterIdentity
+from .driver_verification import CupsDriverCheck, firmware_notice, verify_cups_model
 from .samsung_uld import (
     SAMSUNG_ULD_URL, SAMSUNG_ULD_SHA256, SamsungInstallResult,
     install_samsung_uld, supports_samsung_uld, vendor_architecture_ok,
@@ -58,10 +59,18 @@ class DriverInstallPlan:
     source_kind: str = "apt"          # apt | samsung-uld
     download_url: str | None = None
     download_sha256: str | None = None
+    additional_notice: str | None = None
 
     @property
     def can_install(self) -> bool:
         return self.package is not None and self.package_status == "available"
+
+
+@dataclass(frozen=True)
+class AptInstallResult:
+    message: str
+    cups_status: str
+    matched_model_id: str | None = None
 
 
 class DriverInstallError(RuntimeError):
@@ -199,12 +208,13 @@ class DriverInstallService:
         return DriverInstallPlan(
             identity.manufacturer, identity.name, title, url, note,
             package, status, text, candidate.source_url, candidate.evidence,
+            additional_notice=firmware_notice(identity, package),
         )
 
     def install(
         self, identity: PrinterIdentity, plan: DriverInstallPlan,
         *, approved: bool = False,
-    ) -> str | SamsungInstallResult:
+    ) -> AptInstallResult | SamsungInstallResult:
         if not approved:
             raise DriverInstallError("사용자 승인 없이 드라이버를 설치할 수 없습니다.")
         if plan.source_kind == "samsung-uld":
@@ -253,7 +263,25 @@ class DriverInstallService:
         )
         if query.returncode or not _installed_status(query.stdout):
             raise DriverInstallError("설치 명령은 끝났지만 패키지 설치 완료를 확인하지 못했습니다.")
-        return (
-            f"{package} 설치를 확인했습니다. CUPS 모델 목록을 다시 조회한 다음 "
-            "프린터와 모델이 일치하는지 확인하고 등록하세요."
-        )
+        # 패키지 설치 성공과 CUPS 드라이버 검색 성공은 다릅니다.
+        # 장치에 출력하거나 프린터를 등록하지 않고 로컬 모델 목록만 확인합니다.
+        try:
+            cups = self._run(["lpinfo", "-m"], timeout=25)
+            if cups.returncode:
+                check = CupsDriverCheck(
+                    "unavailable", "CUPS 드라이버 목록 조회가 실패했습니다. "
+                    "권한을 확인하고 앱에서 모델을 다시 조회해 주세요.",
+                )
+            else:
+                check = verify_cups_model(identity, cups.stdout)
+        except DriverInstallError:
+            check = CupsDriverCheck(
+                "unavailable", "CUPS 드라이버 목록을 읽을 수 없습니다. "
+                "앱에서 다시 조회하고 모델을 선택해 주세요.",
+            )
+        warning = firmware_notice(identity, package)
+        message = (
+            f"{package} 설치는 완료됐습니다. {check.details} "
+            + (f"추가 확인: {warning}" if warning else "")
+        ).strip()
+        return AptInstallResult(message, check.status, check.model_id)

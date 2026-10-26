@@ -93,6 +93,8 @@ def test_multi_vendor_driver_installation_requires_approval_and_uses_apt(tmp_pat
         if args[:3] == ["sudo", "-n", "apt-get"]:
             installed = True
             return CompletedProcess(args, 0, "done", "")
+        if args == ["lpinfo", "-m"]:
+            return CompletedProcess(args, 0, "epson.ppd Epson Stylus Photo R200\n", "")
         raise AssertionError(args)
 
     installer = DriverInstallService(runner=runner, os_release=path)
@@ -161,6 +163,8 @@ def test_konica_minolta_install_allowlist_accepts_verified_model(tmp_path):
         if args[:3] == ["sudo", "-n", "apt-get"]:
             installed = True
             return CompletedProcess(args, 0, "done", "")
+        if args == ["lpinfo", "-m"]:
+            return CompletedProcess(args, 0, "minolta.ppd Konica Minolta magicolor 2300 DL\n", "")
         raise AssertionError(args)
 
     installer = DriverInstallService(runner=runner, os_release=path)
