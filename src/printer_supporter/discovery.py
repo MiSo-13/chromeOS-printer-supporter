@@ -185,7 +185,7 @@ class DiscoveryService:
         """
         cups_error: PrinterRegistrationError | None = None
         try:
-            devices = parse_discovered_devices(self._run(["lpinfo", "-v"]))
+            devices = parse_discovered_devices(self._run(["lpinfo", "-v"], timeout=10))
         except PrinterRegistrationError as exc:
             cups_error = exc
             devices = []
