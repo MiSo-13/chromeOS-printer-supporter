@@ -67,7 +67,7 @@ def test_install_failure_recovery_actions_do_not_install_or_register(tmp_path):
         assert widget._recovery_issue == "missing"
 
         ppd = Path("REPLACE_PPD")
-        ppd.write_text('*PPD-Adobe: "4.3"\n')
+        ppd.write_text('*PPD-Adobe: "4.3"\\n')
         QFileDialog.getOpenFileName = lambda *a, **kw: (str(ppd), "CUPS PPD")
         widget.recovery_ppd_button.click()
         assert widget.driver.currentData() == "ppd"
