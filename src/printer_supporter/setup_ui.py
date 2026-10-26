@@ -25,7 +25,7 @@ from .driver_workflow import resolve_driver
 from .samsung_uld import SamsungInstallResult
 from .driver_recommendation import DriverAdvisor, DriverRecommendation
 from .driver_installation import (
-    DriverInstallPlan, DriverInstallService, official_support_for, package_for_identity,
+    AptInstallResult, DriverInstallPlan, DriverInstallService, official_support_for, package_for_identity,
 )
 
 
@@ -570,6 +570,7 @@ class PrinterSetupWidget(QWidget):
                 + "영향: 인쇄 필터 및/또는 패키지·의존성이 설치될 수 있습니다.\n"
                 "프린터 등록과 실제 인쇄는 하지 않습니다.\n"
                 "sudo 권한과 네트워크 연결이 필요합니다."
+                + (f"\n추가 확인: {plan.additional_notice}" if plan.additional_notice else "")
             ),
             confirm_label="설치",
         ):
@@ -607,6 +608,15 @@ class PrinterSetupWidget(QWidget):
             self.status.setText("삼성 드라이버 설치 완료 · PPD 선택됨. 등록을 확인하세요.")
             self.install_status_label.setText("공식 ULD PPD 및 x86_64 필터 설치 완료")
             QMessageBox.information(self, "삼성 드라이버 설치", message.message)
+            return
+        if isinstance(message, AptInstallResult):
+            self.status.setText(message.message)
+            if message.cups_status == "matched":
+                QMessageBox.information(self, "드라이버 설치 확인", message.message)
+            else:
+                QMessageBox.warning(self, "드라이버 추가 확인 필요", message.message)
+            # 설치 후 CUPS 목록을 다시 조회하여 드라이버 자동 선택도 갱신합니다.
+            self.identify_current()
             return
         self.status.setText("설치 완료 · CUPS에서 일치하는 드라이버를 다시 확인합니다.")
         QMessageBox.information(self, "드라이버 패키지 설치", message)
