@@ -7,7 +7,8 @@ import pytest
 
 from printer_supporter.discovery import (
     DiscoveryService, PrinterRegistrationError, Registration,
-    manual_printer, parse_discovered_devices, validate_registration,
+    manual_printer, parse_discovered_devices, parse_ippfind_devices,
+    validate_registration, MAX_DISCOVERED_DEVICES,
 )
 
 
@@ -188,3 +189,92 @@ def test_invalid_cups_model_rejected_before_any_system_command(model):
             approved=True,
         )
     assert calls == []
+
+
+def test_ippfind_parses_only_safe_ipp_uris_with_limits():
+    uris = "\\n".join([
+        "ipp://printer.local./ipp/print",
+        "ipps://secure.local:631/ipp/print",
+        "ipp://printer.local./ipp/print",
+        "https://bad.example",
+        "ipp://user:password@bad.local/ipp/print",
+        "ipp://host.local/path\\tunsafe",
+        "ipp://broken.local:invalid/ipp/print",
+        "socket://printer.local:9100",
+    ])
+    devices = parse_ippfind_devices(uris)
+    assert {dev.uri for dev in devices} == {
+        "ipp://printer.local./ipp/print",
+        "ipps://secure.local:631/ipp/print",
+    }
+    assert all(dev.scheme in {"ipp", "ipps"} for dev in devices)
+    many = "\\n".join(f"ipp://printer{i}.local/ipp/print" for i in range(400))
+    assert len(parse_ippfind_devices(many)) == MAX_DISCOVERED_DEVICES
+
+
+def test_dnssd_results_are_supplemented_by_bounded_ippfind_not_range_scan():
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        if command == ["lpinfo", "-v"]:
+            return CompletedProcess(command, 0, "network dnssd://Samsung%20M203x._ipp._tcp.local/\\n", "")
+        if command[0] == "/usr/bin/ippfind":
+            return CompletedProcess(command, 0, "ipp://printer.local/ipp/print\\n", "")
+        raise AssertionError(command)
+
+    devices = DiscoveryService(runner=runner, which=lambda _: "/usr/bin/ippfind").discover()
+    assert {d.scheme for d in devices} == {"dnssd", "ipp"}
+    assert any(d.uri == "ipp://printer.local/ipp/print" for d in devices)
+    assert calls[0][0] == ["lpinfo", "-v"]
+    assert calls[1] == (
+        ["/usr/bin/ippfind", "-T", "2", "_ipp._tcp", "_ipps._tcp", "--print"],
+        {"capture_output": True, "text": True, "check": False, "timeout": 7},
+    )
+
+
+def test_existing_direct_ipp_uri_skips_duplicate_discovery():
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return CompletedProcess(command, 0, "network ipp://printer.local/ipp/print\\n", "")
+
+    devices = DiscoveryService(runner=runner, which=lambda _: "/usr/bin/ippfind").discover()
+    assert len(devices) == 1 and devices[0].scheme == "ipp"
+    assert calls == [["lpinfo", "-v"]]
+
+
+def test_missing_optional_discovery_tool_keeps_cups_results():
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return CompletedProcess(command, 0, "network dnssd://Samsung._ipp._tcp.local/\\n", "")
+
+    devices = DiscoveryService(runner=runner, which=lambda _: None).discover()
+    assert len(devices) == 1 and devices[0].scheme == "dnssd"
+    assert calls == [["lpinfo", "-v"]]
+
+
+def test_ippfind_can_recover_from_cups_permission_failure():
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        if command == ["lpinfo", "-v"]:
+            return CompletedProcess(command, 1, "", "Forbidden")
+        return CompletedProcess(command, 0, "ipps://printer.local/ipp/print\\n", "")
+
+    devices = DiscoveryService(runner=runner, which=lambda _: "ippfind").discover()
+    assert len(devices) == 1 and devices[0].scheme == "ipps"
+    assert len(calls) == 2
+
+
+def test_cups_failure_without_fallback_does_not_claim_no_printers():
+    def runner(command, **kwargs):
+        return CompletedProcess(command, 1, "", "CUPS: Forbidden")
+
+    service = DiscoveryService(runner=runner, which=lambda _: "ippfind")
+    with pytest.raises(PrinterRegistrationError, match="Forbidden"):
+        service.discover()
