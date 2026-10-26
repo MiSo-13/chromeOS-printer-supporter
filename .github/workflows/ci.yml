@@ -24,33 +24,28 @@ jobs:
         run: python -m pip install -e '.[test]'
       - name: 문법 확인
         run: python -m compileall -q src tests
-      - name: 삼성 공식 Linux 드라이버 URL 조사 (진단 후 제거)
+      - name: 삼성 ULD 공식 배포파일 내용·체크섬 검증 (진단 후 제거)
         continue-on-error: true
         run: |
           python - <<'PY'
-          import re, urllib.request, html, json
-          sources = [
-              "https://www.samsung.com/sec/support/model/SL-M2030W/",
-              "https://www.samsungsvc.co.kr/download/view?code=SL-M2030w",
-          ]
-          for url in sources:
-              print("SOURCE:", url)
-              try:
-                  request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-                  with urllib.request.urlopen(request, timeout=18) as response:
-                      raw = response.read(5000000)
-                      print("status", response.status, "bytes", len(raw), "final", response.url)
-                  doc = html.unescape(raw.decode("utf-8", "replace")).replace("\\/", "/")
-                  for key in ("ULDLINUX", "Linux", "downloadcenter.samsung", ".zip"):
-                      positions = [m.start() for m in re.finditer(re.escape(key), doc, re.I)]
-                      print("key",key,"count",len(positions))
-                      for p in positions[:5]:
-                          print("snippet:",doc[max(0,p-240):p+350][:600].replace("\\n"," "))
-                  urls = re.findall(r'https?://[^"\\s<>]+', doc, flags=re.I)
-                  matches = [x for x in urls if "ULDLINUX" in x.upper() or "DOWNLOADCENTER.SAMSUNG.COM" in x.upper()]
-                  print("candidate URLs:", matches[:15])
-              except Exception as exc:
-                  print("error:", type(exc).__name__, str(exc)[:300])
+          import urllib.request,hashlib,zipfile,io
+          from urllib.error import HTTPError
+          url="https://downloadcenter.samsung.com/content/DR/201911/20191101152153376/ULDLINUX_V1.00.39.07_01.24.zip"
+          print("SOURCE:",url)
+          try:
+              req=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0"})
+              with urllib.request.urlopen(req, timeout=35) as resp:
+                  print("status",resp.status,"url",resp.url,"ctype",resp.headers.get("Content-Type"))
+                  raw=resp.read(26000000)
+              print("bytes",len(raw),"SHA256",hashlib.sha256(raw).hexdigest(),"ZIP",zipfile.is_zipfile(io.BytesIO(raw)))
+              if zipfile.is_zipfile(io.BytesIO(raw)):
+                  with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                      files=[(x.filename,x.file_size) for x in archive.infolist()]
+                      print("filecount",len(files))
+                      print("interesting", [x for x in files if any(y in x[0].lower() for y in ("m203","x86_64","arm64","aarch64","rastertospl","install.sh","ppd"))][:100])
+                      print("samples",files[:80])
+          except Exception as e:
+              print("ERROR",repr(e))
           PY
       - name: 단위 테스트
         run: pytest -q
