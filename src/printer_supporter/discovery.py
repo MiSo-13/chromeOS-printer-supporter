@@ -209,7 +209,11 @@ class DiscoveryService:
 
         if not devices and cups_error is not None:
             raise cups_error
-        return sorted(devices[:MAX_DISCOVERED_DEVICES], key=lambda value: value.name.lower())
+        # 결과가 많을 때 실제 IPP 모델 조회가 가능한 주소를 우선 표시합니다.
+        return sorted(
+            devices,
+            key=lambda value: (value.scheme not in {"ipp", "ipps"}, value.name.lower()),
+        )[:MAX_DISCOVERED_DEVICES]
 
     def probe(self, device: DiscoveredPrinter) -> str:
         parsed = urlsplit(device.uri)
