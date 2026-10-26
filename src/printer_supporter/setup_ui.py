@@ -407,6 +407,10 @@ class PrinterSetupWidget(QWidget):
     def _registration_failed(self, message: str):
         self._register_busy = False
         self.register_button.setEnabled(self.current_device is not None)
+        if "동일한 이름의 프린터" in message:
+            self.status.setText("다른 프린터 이름을 입력한 뒤 다시 등록해 주세요.")
+        else:
+            self._show_recovery("registration-failed", message)
         self._error(message)
 
     def _search_failed(self, message: str):
