@@ -25,23 +25,29 @@ BROTHER_BR_LASER = frozenset({
 })
 
 # OpenPrinting/SpliX에 실제 모델이 명시된 항목(패키지 버전에 따라 다를 수 있음).
+# OpenPrinting SpliX upstream supported-model list. The installed Debian
+# package may contain an older SpliX version; availability is not a guarantee.
 SPLIX_MODELS = {
     "Samsung": frozenset({
-        "SCX-4100", "SCX-4200", "SCX-4300", "SCX-4500", "SCX-4521F",
+        "SCX-4100", "SCX-4200", "SCX-4216F", "SCX-4300",
+        "SCX-4500", "SCX-4521F", "SF-565P",
         "ML-1510", "ML-1520", "ML-1610", "ML-1710", "ML-1740",
         "ML-1750", "ML-2571", "ML-2250", "ML-2251", "ML-3471ND",
         "ML-3560", "ML-2150", "ML-2550", "ML-1630", "ML-1640",
         "ML-2010", "ML-2015", "ML-2240", "ML-2510", "ML-1660",
         "ML-1910", "ML-2525", "ML-2525W", "ML-2580", "ML-2580N",
-        "ML-3050", "ML-3051", "ML-3310", "ML-2160", "ML-2165",
-        "ML-1860", "ML-1670", "ML-1865", "SCX-3200", "SCX-3400",
-        "SCX-4600", "M2020 SERIES", "M2070 SERIES",
+        "ML-3050", "ML-3051", "ML-3310", "SCX-3200", "SCX-3400",
+        "SCX-4600", "SCX-4623F", "SCX-4623FW", "ML-2160",
+        "ML-3051ND", "ML-3310ND", "SCX-5330N", "SCX-5530FN",
+        "ML-1860", "ML-1670", "ML-1865", "ML-1915", "ML-2165",
+        "M2020 SERIES", "ML-1865W SERIES", "M2070 SERIES",
         "M262X 282X SERIES", "M267X 287X SERIES", "M283X SERIES",
         "CLP-500", "CLP-550", "CLP-510", "CLP-200", "CLP-600",
-        "CLP-300", "CLP-310", "CLP-315", "CLP-310N",
-        "CLX-2170", "CLX-216X", "CLX-3160",
+        "CLX-2170", "CLP-300", "CLP-310N", "CLX-216X",
+        "CLX-3160", "CLP-310", "CLP-315",
     }),
     "Xerox": frozenset({
+        "WORKCENTRE 3119", "WORKCENTRE PE16", "WORKCENTRE PE114E",
         "PHASER 3115", "PHASER 3116", "PHASER 3120", "PHASER 3121",
         "PHASER 3130", "PHASER 3420", "PHASER 3425", "PHASER 5500",
         "PHASER 3150", "PHASER 3160", "PHASER 3117", "PHASER 3122",
@@ -53,6 +59,7 @@ SPLIX_MODELS = {
     "Dell": frozenset({"1100", "1110"}),
     "Lexmark": frozenset({"X215 MFP"}),
 }
+
 # Debian foo2zjs 패키지 설명에서 모델이 구체적으로 언급된 항목.
 FOO2ZJS_MODELS = {
     "HP": frozenset({
