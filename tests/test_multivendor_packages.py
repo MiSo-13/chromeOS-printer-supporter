@@ -9,7 +9,8 @@ from printer_supporter.driver_package_catalog import (
     BROTHER_BR_LASER, SPLIX_MODELS, FOO2ZJS_MODELS,
     GUTENPRINT_MODELS, distro_package_for,
 )
-from printer_supporter.identification import PrinterIdentity
+from printer_supporter.identification import PrinterIdentity, identity_from_attributes
+from printer_supporter.discovery import DiscoveredPrinter
 
 
 def device(vendor, model, *, source="IPP 장치 응답", name=None):
@@ -123,3 +124,52 @@ def test_legacy_brother_models_remain_supported():
     assert len(BROTHER_BR_LASER) >= 20
     for model in BROTHER_BR_LASER:
         assert package_for_identity(device("Brother", model)) == "printer-driver-brlaser"
+
+
+@pytest.mark.parametrize("reported_name,vendor,expected_package", [
+    ("Dell 1100", "Dell", "printer-driver-splix"),
+    ("Minolta magicolor 2300 DL", "Minolta", "printer-driver-foo2zjs"),
+    ("Konica Minolta magicolor 2300 DL", "Konica Minolta", "printer-driver-foo2zjs"),
+])
+def test_ipp_identification_to_driver_lookup(reported_name, vendor, expected_package):
+    """실제 IPP 파싱 → 브랜드 인식 → 패키지 후보까지 검증."""
+    printer = DiscoveredPrinter(reported_name, "ipp://192.168.1.5/ipp/print", "ipp")
+    identity = identity_from_attributes(printer, {
+        "printer-make-and-model": (reported_name,),
+    })
+    assert identity.source == "IPP 장치 응답"
+    assert identity.manufacturer == vendor
+    assert package_for_identity(identity) == expected_package
+
+
+def test_konica_minolta_install_allowlist_accepts_verified_model(tmp_path):
+    path = tmp_path / "os-release"
+    path.write_text("ID=debian\\nVERSION_ID=12\\n".replace("\\n", "\n"))
+    calls = []
+    installed = False
+
+    def runner(args, **kwargs):
+        nonlocal installed
+        calls.append(args)
+        if args[:2] == ["dpkg-query", "-W"]:
+            return CompletedProcess(
+                args, 0 if installed else 1,
+                "install ok installed" if installed else "", "",
+            )
+        if args[:2] == ["apt-cache", "policy"]:
+            return CompletedProcess(args, 0, "  Candidate: 5.3\n", "")
+        if args[:3] == ["sudo", "-n", "apt-get"]:
+            installed = True
+            return CompletedProcess(args, 0, "done", "")
+        raise AssertionError(args)
+
+    installer = DriverInstallService(runner=runner, os_release=path)
+    identity = device("Konica Minolta", "magicolor 2300 DL")
+    plan = installer.plan(identity)
+    assert plan.can_install and plan.package == "printer-driver-foo2zjs"
+    with pytest.raises(DriverInstallError, match="사용자 승인"):
+        installer.install(identity, plan, approved=False)
+    installer.install(identity, plan, approved=True)
+    assert [args[-1] for args in calls if args[:3] == ["sudo", "-n", "apt-get"]] == [
+        "printer-driver-foo2zjs"
+    ]
