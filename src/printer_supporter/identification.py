@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import StringIO
+from itertools import islice
 from pathlib import Path
 from subprocess import CompletedProcess, TimeoutExpired, run
 from tempfile import TemporaryDirectory
@@ -25,7 +27,7 @@ GROUP operation-attributes-tag
 ATTR charset attributes-charset utf-8
 ATTR language attributes-natural-language en
 ATTR uri printer-uri $uri
-ATTR keyword requested-attributes printer-make-and-model,printer-name,ipp-versions-supported,ipp-features-supported,document-format-supported
+ATTR keyword requested-attributes printer-make-and-model,printer-name,printer-device-id,ipp-versions-supported,ipp-features-supported,document-format-supported
 STATUS successful-ok
 }
 """
@@ -40,11 +42,13 @@ _RECOGNIZED_VENDORS = (
     ("Minolta", "Minolta"), ("Dell", "Dell"),
 )
 _ATTRIBUTE_LINE = re.compile(
-    r"^\s*(printer-make-and-model|printer-name|ipp-versions-supported|"
+    r"^\s*(printer-make-and-model|printer-name|printer-device-id|ipp-versions-supported|"
     r"ipp-features-supported|document-format-supported)\s+\([^)]*\)\s*=\s*(.*?)\s*$",
     re.IGNORECASE,
 )
 _IPP_VERSION = re.compile(r"^\d+\.\d+$")
+MAX_IPP_ATTRIBUTE_LINES = 512
+MAX_IPP_ATTRIBUTE_CHARS = 4096
 
 
 @dataclass(frozen=True)
@@ -63,14 +67,22 @@ class PrinterIdentity:
 def parse_ipp_attributes(output: str) -> dict[str, tuple[str, ...]]:
     """ipptool -tv의 속성 줄만 추출합니다 (제어 문자열/기타 로그는 무시)."""
     attributes: dict[str, tuple[str, ...]] = {}
-    for line in output.splitlines():
+    for line in islice(StringIO(output), MAX_IPP_ATTRIBUTE_LINES):
+        if len(line) > MAX_IPP_ATTRIBUTE_CHARS:
+            continue
         match = _ATTRIBUTE_LINE.fullmatch(line)
         if not match:
             continue
         key = match.group(1).lower()
+        # 이름과 IEEE 1284 ID는 단일 텍스트로, 제조사 이름에 쉼표가 있을 수 있습니다.
+        if key in {"printer-device-id", "printer-make-and-model", "printer-name"}:
+            value = match.group(2).strip().strip('"').strip("'")
+            if value:
+                attributes[key] = (value,)
+            continue
         values = tuple(
             value.strip().strip('"').strip("'")
-            for value in match.group(2).split(",")
+            for value in match.group(2).split(",", 63)
             if value.strip()
         )
         if values:
@@ -87,17 +99,47 @@ def _vendor_and_model(name: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _device_id_make_model(raw: str) -> tuple[str | None, str | None]:
+    """제조사 목록과 관계없이 IPP의 IEEE 1284 MFG/MDL 필드만 사용합니다."""
+    fields: dict[str, str] = {}
+    for segment in islice(raw[:MAX_IPP_ATTRIBUTE_CHARS].split(";"), 64):
+        if ":" not in segment:
+            continue
+        key, value = segment.split(":", 1)
+        key = key.strip().upper()
+        value = value.strip()
+        if key in {"MFG", "MANUFACTURER", "MDL", "MODEL"} and (
+            0 < len(value) <= 160 and not any(ord(char) < 32 for char in value)
+        ):
+            fields[key] = value
+    return (
+        fields.get("MFG") or fields.get("MANUFACTURER"),
+        fields.get("MDL") or fields.get("MODEL"),
+    )
+
+
 def identity_from_attributes(
     device: DiscoveredPrinter, attributes: dict[str, tuple[str, ...]]
 ) -> PrinterIdentity:
     reported = attributes.get("printer-make-and-model", ())
     verified_name = (reported[0] if reported else "").strip()[:160]
     service_name = device.name.strip()[:160] or "모델 미확인"
-    name = verified_name or service_name
+    device_ids = attributes.get("printer-device-id", ())
+    id_vendor, id_model = _device_id_make_model(device_ids[0]) if device_ids else (None, None)
+    id_name = f"{id_vendor} {id_model}" if id_vendor and id_model else ""
+    name = verified_name or id_name[:160] or service_name
     vendor, model = _vendor_and_model(name)
+    if id_name and (
+        not verified_name or " ".join(verified_name.casefold().split()) ==
+        " ".join(id_name.casefold().split())
+    ):
+        # 장치가 보내온 두 이름이 일치할 때만 미등록 제조사를 분리합니다.
+        # 불일치한 ID로는 새 설치 후보를 만들지 않습니다.
+        vendor, model = id_vendor, id_model
     if not verified_name and service_name == device.uri:
-        name = "모델 미확인"
-        vendor, model = None, None
+        if not id_name:
+            name = "모델 미확인"
+            vendor, model = None, None
 
     versions = tuple(v for v in attributes.get("ipp-versions-supported", ()) if _IPP_VERSION.fullmatch(v))
     formats = tuple(v.lower() for v in attributes.get("document-format-supported", ()))
@@ -127,7 +169,7 @@ def identity_from_attributes(
         manufacturer=vendor,
         model=model,
         protocol=device.scheme.upper(),
-        source="IPP 장치 응답" if verified_name else "검색된 이름(추정) / IPP 기능 조회",
+        source="IPP 장치 응답" if verified_name or id_name else "검색된 이름(추정) / IPP 기능 조회",
         driverless=driverless,
         recommendation=advice,
         ipp_versions=versions,

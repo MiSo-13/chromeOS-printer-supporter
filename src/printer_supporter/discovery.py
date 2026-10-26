@@ -191,8 +191,11 @@ class DiscoveryService:
             cups_error = exc
             devices = []
 
-        # 이미 실제 IPP URI가 있다면 중복 DNS-SD 검색을 생략합니다.
-        if not any(device.scheme in {"ipp", "ipps"} for device in devices):
+        # 일부 IPP 프린터가 보여도 다른 장치는 dnssd 이름만 나올 수 있습니다.
+        # 그런 경우에만 보조 검색을 실행하고, 이미 모두 IPP라면 생략합니다.
+        if any(device.scheme == "dnssd" for device in devices) or not any(
+            device.scheme in {"ipp", "ipps"} for device in devices
+        ):
             ippfind = self.which("ippfind")
             if ippfind:
                 try:
