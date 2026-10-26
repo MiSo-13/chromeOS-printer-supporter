@@ -56,7 +56,8 @@ def parse_discovered_devices(output: str) -> list[DiscoveredPrinter]:
             continue
         if len(devices) >= MAX_DISCOVERED_DEVICES:
             break
-        name = unquote(parsed.hostname or "").split("._", 1)[0].replace("-", " ")
+        # URI의 hostname 속성은 소문자로 변환되므로 원본 서비스 표시명을 사용합니다.
+        name = unquote(parsed.netloc).split("._", 1)[0].replace("-", " ")
         devices[uri] = DiscoveredPrinter(name[:160] or "네트워크 프린터", uri, parsed.scheme)
     return sorted(devices.values(), key=lambda value: value.name.lower())
 
