@@ -50,7 +50,7 @@ class SamsungInstallResult:
 
 def supports_samsung_uld(identity: PrinterIdentity) -> bool:
     return (
-        identity.source == "IPP 장치 응답"
+        identity.source in {"IPP 장치 응답", "사용자 확인(명시적 선택)"}
         and identity.manufacturer == "Samsung"
         and identity.name in SUPPORTED_MODELS
         and identity.name == f"{identity.manufacturer} {identity.model}"
