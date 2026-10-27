@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import configparser
+from importlib.metadata import version as installed_version
 import hashlib
 import os
 from pathlib import Path
@@ -12,6 +13,8 @@ import sys
 import xml.etree.ElementTree as ET
 
 import pytest
+
+from printer_supporter import __version__
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,7 +69,7 @@ def test_build_deb_from_mocked_bundle_and_verify_contents(tmp_path):
         ], capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0, result.stdout + "\n" + result.stderr
-    package = output_dir / f"{PACKAGE}_0.1.0_{arch}.deb"
+    package = output_dir / f"{PACKAGE}_{__version__}_{arch}.deb"
     assert package.is_file()
     checksum = package.with_suffix(".deb.sha256")
     digest, filename = checksum.read_text().split()
@@ -98,10 +101,11 @@ def test_release_versions_are_consistent():
     import tomllib
 
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    about = (ROOT / "src" / "printer_supporter" / "__init__.py").read_text(
-        encoding="utf-8",
-    )
-    assert f'__version__ = "{project["project"]["version"]}"' in about
+    assert project["project"]["dynamic"] == ["version"]
+    assert project["tool"]["setuptools"]["dynamic"]["version"] == {
+        "attr": "printer_supporter.__version__",
+    }
+    assert installed_version(project["project"]["name"]) == __version__
 
 
 def test_settings_are_saved_in_user_config_not_working_directory(tmp_path, monkeypatch):
