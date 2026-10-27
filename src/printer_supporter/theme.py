@@ -11,6 +11,7 @@ QMenu::item:selected { background: #d6e8fb; color: #174f87; }
 QWidget#documentPreview, QScrollArea#previewScroll { background: #edf1f5; border: none; border-radius: 6px; }
 QLabel#previewPlaceholder { background: #edf1f5; color: #56677a; padding: 16px; border-radius: 6px; }
 QLabel#previewImage { background: #ffffff; }
+QLabel#previewNote { color: #586b80; font-size: 11px; padding: 2px 0; }
 QPlainTextEdit#previewText { background: #ffffff; color: #25313c; border: 1px solid #dce2e8; border-radius: 6px; padding: 12px; }
 
 QLabel#focusSupportSummary { background: #e8f0fa; color: #174c85; border: 1px solid #bfcee1; border-radius: 5px; padding: 9px 11px; font-weight: 700; }
@@ -89,6 +90,7 @@ QMenu::item:selected { background: #385775; color: #ffffff; }
 QWidget#documentPreview, QScrollArea#previewScroll { background: #303843; border: none; border-radius: 6px; }
 QLabel#previewPlaceholder { background: #303843; color: #c0cad5; padding: 16px; border-radius: 6px; }
 QLabel#previewImage { background: #ffffff; }
+QLabel#previewNote { color: #b7c5d4; font-size: 11px; padding: 2px 0; }
 QPlainTextEdit#previewText { background: #242b34; color: #e1e6ed; border: 1px solid #3b4551; border-radius: 6px; padding: 12px; }
 
 QLabel#focusSupportSummary { background: #263d57; color: #c4e2ff; border: 1px solid #426789; border-radius: 5px; padding: 9px 11px; font-weight: 700; }
