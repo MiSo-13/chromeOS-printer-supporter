@@ -274,3 +274,44 @@ def test_test_page_uses_same_orientation_option():
         "lp", "-d", "printer", "-n", "1",
         "-o", "media=A4", "-o", "orientation-requested=3", "--",
     ]
+
+
+def test_fit_to_page_is_applied_to_one_document_job_only(tmp_path):
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"%PDF-1.4")
+    commands = []
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        return result(command, stdout="request id is printer-1")
+
+    service = CupsService(runner)
+    service.print_file(
+        source, "printer", media="A4",
+        options={"orientation-requested": "4", "fit-to-page": "true"},
+    )
+    service.print_file(source, "printer", media="A4")
+
+    assert commands == [
+        ["lp", "-d", "printer", "-n", "1", "-o", "media=A4",
+         "-o", "orientation-requested=4", "-o", "fit-to-page",
+         "--", str(source)],
+        ["lp", "-d", "printer", "-n", "1", "-o", "media=A4",
+         "--", str(source)],
+    ]
+
+
+def test_fit_to_page_works_with_test_page():
+    commands = []
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        return result(command)
+
+    CupsService(runner).print_test_page(
+        "printer", media="A4", options={"fit-to-page": "true"},
+    )
+    assert commands[0][:-1] == [
+        "lp", "-d", "printer", "-n", "1", "-o", "media=A4",
+        "-o", "fit-to-page", "--",
+    ]
