@@ -7,15 +7,15 @@ Chromebook의 Linux 환경에서 프린터를 연결하고 문서를 인쇄하�
 먼저 Chromebook에서 **설정 → 개발자 → Linux 개발 환경**을 켜 주세요.
 
 1. [Releases](https://github.com/MiSo-13/chromeOS-printer-supporter/releases)에서 설치 파일을 내려받습니다.
-   - Intel/AMD Chromebook: `chromeos-printer-supporter_0.1.0_amd64.deb`
-   - ARM Chromebook: `chromeos-printer-supporter_0.1.0_arm64.deb`
+   - Intel/AMD Chromebook: `chromeos-printer-supporter_0.1.1_amd64.deb`
+   - ARM Chromebook: `chromeos-printer-supporter_0.1.1_arm64.deb`
    - 잘 모르겠다면 Linux 터미널에서 `dpkg --print-architecture`로 확인할 수 있습니다.
 2. **파일 앱 → 다운로드**에서 받은 파일을 **Linux 파일** 폴더로 복사합니다.
 3. **터미널 → Penguin**을 열어 설치합니다. Intel/AMD 기준 명령어입니다.
 
    ```bash
    sudo apt update
-   sudo apt install ./chromeos-printer-supporter_0.1.0_amd64.deb
+   sudo apt install ./chromeos-printer-supporter_0.1.1_amd64.deb
    ```
 
    ARM 기기는 파일명의 `amd64`를 `arm64`로 바꿔 입력하세요. 새 버전을 받았다면 파일명에 맞게 버전도 변경하면 됩니다.
