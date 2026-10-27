@@ -207,6 +207,7 @@ class CupsService:
         if media is not None and not has_paper:
             command.extend(["-o", f"media={media}"])
         for key, value in selection.items():
-            command.extend(["-o", f"{key}={value}"])
+            # CUPS fit-to-page는 값이 없는 플래그 형태로 전달합니다.
+            command.extend(["-o", "fit-to-page" if key == "fit-to-page" else f"{key}={value}"])
         command.extend(["--", str(path)])
         return _execute(command, self.runner).strip()
