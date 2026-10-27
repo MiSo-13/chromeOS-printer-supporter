@@ -511,6 +511,9 @@ class MainWindow(QMainWindow):
     def _change_preview_zoom(self, _index: int):
         self.preview_view.set_zoom(self.zoom_box.currentData())
 
+    def _change_preview_orientation(self, _index: int):
+        self.preview_view.set_orientation(self.orientation.currentData())
+
     def _release_office_preview(self):
         self._preview_pdf_path = None
         if self._office_preview is not None:
