@@ -55,6 +55,22 @@ def test_orientation_selector_is_available_without_driver_options():
             assert window.preview_view.image_label.pixmap().height() > (
                 window.preview_view.image_label.pixmap().width()
             )
+
+            # 크기 맞춤은 프린터별 옵션 목록과 무관하게 선택할 수 있습니다.
+            assert window.fit_to_page.isEnabled()
+            assert window.fit_to_page.currentText() == "원본 크기 (기본값)"
+            assert window._selected_print_options() == {}
+            window.fit_to_page.setCurrentIndex(1)
+            assert window._selected_print_options() == {"fit-to-page": "true"}
+            window.orientation.setCurrentIndex(2)
+            assert window._selected_print_options() == {
+                "orientation-requested": "4",
+                "fit-to-page": "true",
+            }
+            window.fit_to_page.setCurrentIndex(0)
+            assert window._selected_print_options() == {
+                "orientation-requested": "4",
+            }
             window.close()
             app.processEvents()
         finally:

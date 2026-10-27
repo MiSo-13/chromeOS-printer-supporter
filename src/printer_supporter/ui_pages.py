@@ -114,6 +114,12 @@ def build_workspace_pages(self, add_page):
     self.orientation.addItem("가로", "4")
     self.orientation.currentIndexChanged.connect(self._change_preview_orientation)
     option_form.addRow("방향", self.orientation)
+    # 문서 크기 정보가 있는 경우 CUPS가 현재 용지에 맞춰 크기를 조정합니다.
+    self.fit_to_page = QComboBox()
+    self.fit_to_page.setAccessibleName("인쇄 크기 맞춤")
+    self.fit_to_page.addItem("원본 크기 (기본값)", None)
+    self.fit_to_page.addItem("용지에 맞추기", "true")
+    option_form.addRow("크기 맞춤", self.fit_to_page)
     self.paper = QComboBox()
     self.color_mode = QComboBox()
     self.duplex_mode = QComboBox()

@@ -67,6 +67,8 @@ def feature_options(options: dict[str, PrinterOption]) -> dict[str, PrinterOptio
 def validate_job_options(options: dict[str, str]) -> None:
     """명령행 인자에 안전하게 전달할 수 있는 옵션 토큰만 허용합니다."""
     for key, value in options.items():
+        if key == "fit-to-page" and value != "true":
+            raise ValueError(f"유효하지 않은 CUPS 옵션입니다: {key}={value}")
         if key == "orientation-requested" and value not in {"3", "4", "5", "6"}:
             raise ValueError(f"유효하지 않은 CUPS 옵션입니다: {key}={value}")
         if not VALID_KEY.fullmatch(key) or not (

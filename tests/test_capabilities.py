@@ -50,6 +50,7 @@ def test_invalid_or_unrecognized_lines_are_ignored():
 @pytest.mark.parametrize("options", [
     {"ColorModel": "--bad"}, {"-o": "foo"}, {"sides": "one-sided;touch"},
     {"orientation-requested": "7"}, {"orientation-requested": "landscape"},
+    {"fit-to-page": "false"}, {"fit-to-page": "1"},
 ])
 def test_unsafe_job_options_rejected(options):
     with pytest.raises(ValueError):
@@ -59,3 +60,7 @@ def test_unsafe_job_options_rejected(options):
 @pytest.mark.parametrize("orientation", ["3", "4", "5", "6"])
 def test_standard_cups_orientation_values_are_valid(orientation):
     validate_job_options({"orientation-requested": orientation})
+
+
+def test_fit_to_page_accepts_only_true_flag():
+    validate_job_options({"fit-to-page": "true"})
