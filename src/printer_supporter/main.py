@@ -352,6 +352,9 @@ class MainWindow(QMainWindow):
             value = self.option_controls[feature].currentData()
             if value is not None:
                 selection[key] = value
+        orientation = self.orientation.currentData()
+        if orientation is not None:
+            selection["orientation-requested"] = orientation
         return selection
 
     def refresh_jobs(self, *_):
