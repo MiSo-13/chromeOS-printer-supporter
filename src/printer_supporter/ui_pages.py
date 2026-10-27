@@ -102,6 +102,13 @@ def build_workspace_pages(self, add_page):
     option_form = QFormLayout()
     option_form.setHorizontalSpacing(16)
     option_form.setVerticalSpacing(12)
+    # CUPS 표준 작업 옵션: lpoptions -l에 나타나지 않아도 사용할 수 있습니다.
+    self.orientation = QComboBox()
+    self.orientation.setAccessibleName("인쇄 방향")
+    self.orientation.addItem("자동 (문서 방향)", None)
+    self.orientation.addItem("세로", "3")
+    self.orientation.addItem("가로", "4")
+    option_form.addRow("방향", self.orientation)
     self.paper = QComboBox()
     self.color_mode = QComboBox()
     self.duplex_mode = QComboBox()
