@@ -355,6 +355,8 @@ class MainWindow(QMainWindow):
         orientation = self.orientation.currentData()
         if orientation is not None:
             selection["orientation-requested"] = orientation
+        if self.fit_to_page.currentData() == "true":
+            selection["fit-to-page"] = "true"
         return selection
 
     def refresh_jobs(self, *_):
