@@ -33,7 +33,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
-          VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          VERSION="$(PYTHONPATH=src python -c 'from printer_supporter import __version__; print(__version__)')"
           test "${GITHUB_REF_NAME}" = "v${VERSION}"
 
       - name: Qt 실행 의존성 설치
@@ -61,7 +61,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          dist/chromeos-printer-supporter/chromeos-printer-supporter --version
+          EXPECTED_VERSION="$(PYTHONPATH=src python -c 'from printer_supporter import __version__; print(__version__)')"
+          test "$(dist/chromeos-printer-supporter/chromeos-printer-supporter --version)" = "${EXPECTED_VERSION}"
           dist/chromeos-printer-supporter/chromeos-printer-supporter --smoke-test
 
       - name: Debian 설치 파일 만들기
