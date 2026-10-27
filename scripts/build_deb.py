@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import os
 from pathlib import Path
@@ -11,7 +12,6 @@ import re
 import shutil
 import subprocess
 import tempfile
-import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,11 +38,25 @@ DEPENDENCIES = (
 )
 
 
-def version_from_project() -> str:
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    version = project["project"]["version"]
+def version_from_package() -> str:
+    """실행 파일과 .deb가 사용하는 단일 버전 상수를 읽습니다."""
+    source = ROOT / "src" / "printer_supporter" / "__init__.py"
+    module = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    version = next(
+        (
+            node.value.value
+            for node in module.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "__version__"
+                for target in node.targets
+            )
+            and isinstance(node.value, ast.Constant)
+        ),
+        None,
+    )
     if not isinstance(version, str) or not VERSION_PATTERN.fullmatch(version):
-        raise ValueError("배포 버전을 pyproject.toml의 숫자 형태로 지정해 주세요.")
+        raise ValueError("printer_supporter.__version__에 숫자 버전을 지정해 주세요.")
     return version
 
 
@@ -62,7 +76,7 @@ def create_deb(bundle: Path, output_dir: Path, architecture: str) -> Path:
     if not entry.is_file() or not os.access(entry, os.X_OK):
         raise ValueError("PyInstaller onedir 실행 파일을 찾을 수 없습니다.")
 
-    version = version_from_project()
+    version = version_from_package()
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir.resolve() / f"{PACKAGE}_{version}_{architecture}.deb"
 
