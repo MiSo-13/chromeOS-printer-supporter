@@ -352,6 +352,9 @@ class MainWindow(QMainWindow):
             value = self.option_controls[feature].currentData()
             if value is not None:
                 selection[key] = value
+        orientation = self.orientation.currentData()
+        if orientation is not None:
+            selection["orientation-requested"] = orientation
         return selection
 
     def refresh_jobs(self, *_):
@@ -507,6 +510,9 @@ class MainWindow(QMainWindow):
 
     def _change_preview_zoom(self, _index: int):
         self.preview_view.set_zoom(self.zoom_box.currentData())
+
+    def _change_preview_orientation(self, _index: int):
+        self.preview_view.set_orientation(self.orientation.currentData())
 
     def _release_office_preview(self):
         self._preview_pdf_path = None

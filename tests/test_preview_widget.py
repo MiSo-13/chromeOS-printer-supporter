@@ -35,6 +35,15 @@ def test_preview_viewer_fit_zoom_image_and_text(tmp_path):
         assert view.image_label.pixmap().width() == 1500
         assert view.image_label.pixmap().height() == 2100
 
+        # 표시용 픽스맵만 회전하며, 원본 이미지 해상도는 그대로입니다.
+        view.set_orientation("4")
+        rotated = view.image_label.pixmap()
+        assert (rotated.width(), rotated.height()) == (2100, 1500)
+        assert (view._original.width(), view._original.height()) == (1000, 1400)
+        view.set_orientation(None)
+        assert (view.image_label.pixmap().width(),
+                view.image_label.pixmap().height()) == (1500, 2100)
+
         view.set_zoom("fit")
         view.resize(360, 300)
         app.processEvents()
@@ -52,6 +61,14 @@ def test_preview_viewer_fit_zoom_image_and_text(tmp_path):
         assert loaded.height() == 80
         view.show_image(loaded)
         assert view.stack.currentWidget() is view.scroll
+        view.set_orientation("3")
+        assert view.image_label.pixmap().height() > view.image_label.pixmap().width()
+        # 페이지가 바뀌어도 선택 방향을 유지합니다.
+        view.show_image(pdf_page)
+        assert view.image_label.pixmap().height() > view.image_label.pixmap().width()
+        view.set_orientation("4")
+        assert view.image_label.pixmap().width() > view.image_label.pixmap().height()
+        view.set_orientation(None)
 
         view.show_text("텍스트 미리보기")
         assert view.stack.currentWidget() is view.text_view

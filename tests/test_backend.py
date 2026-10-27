@@ -234,3 +234,43 @@ def test_invalid_option_never_submits_job(tmp_path):
     with pytest.raises(PrintError, match="CUPS 옵션"):
         CupsService(runner).print_file(source, "printer", options={"ColorModel": ";bad"})
     assert calls == []
+
+
+@pytest.mark.parametrize("orientation", ["3", "4"])
+def test_orientation_is_applied_to_one_document_job_only(tmp_path, orientation):
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"%PDF-1.4")
+    commands = []
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        return result(command, stdout="request id is printer-1")
+
+    service = CupsService(runner)
+    service.print_file(
+        source, "printer", media=None,
+        options={"orientation-requested": orientation},
+    )
+    service.print_file(source, "printer", media=None)
+
+    assert commands == [
+        ["lp", "-d", "printer", "-n", "1",
+         "-o", f"orientation-requested={orientation}", "--", str(source)],
+        ["lp", "-d", "printer", "-n", "1", "--", str(source)],
+    ]
+
+
+def test_test_page_uses_same_orientation_option():
+    commands = []
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        return result(command, stdout="request id is printer-2")
+
+    CupsService(runner).print_test_page(
+        "printer", media="A4", options={"orientation-requested": "3"},
+    )
+    assert commands[0][:-1] == [
+        "lp", "-d", "printer", "-n", "1",
+        "-o", "media=A4", "-o", "orientation-requested=3", "--",
+    ]
