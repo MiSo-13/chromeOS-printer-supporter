@@ -26,6 +26,7 @@ class DocumentPreview(QWidget):
         self._zoom = "fit"
         self._orientation: str | None = None
         self._fit_update_pending = False
+        self._display_key = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -56,6 +57,7 @@ class DocumentPreview(QWidget):
         self.stack.addWidget(self.text_view)
 
     def clear(self, message: str):
+        self._display_key = None
         self._original = QPixmap()
         self.image_label.clear()
         self.text_view.clear()
@@ -67,10 +69,12 @@ class DocumentPreview(QWidget):
             self.clear("이미지 미리보기를 만들지 못했습니다.")
             return
         self._original = pixmap
+        self._display_key = None
         self.stack.setCurrentWidget(self.scroll)
         self._refresh_image()
 
     def show_text(self, content: str):
+        self._display_key = None
         self._original = QPixmap()
         self.text_view.setPlainText(content)
         self.text_view.moveCursor(QTextCursor.MoveOperation.Start)
@@ -138,6 +142,9 @@ class DocumentPreview(QWidget):
         factor = min(factor, 4096 / display_width, 4096 / display_height)
         target_width = max(1, round(display_width * factor))
         target_height = max(1, round(display_height * factor))
+        display_key = (self._original.cacheKey(), rotate, target_width, target_height)
+        if display_key == self._display_key:
+            return
         displayed = QPixmap(target_width, target_height)
         displayed.fill(Qt.GlobalColor.transparent)
         painter = QPainter(displayed)
@@ -156,6 +163,7 @@ class DocumentPreview(QWidget):
         painter.end()
         self.image_label.setPixmap(displayed)
         self.image_label.resize(displayed.size())
+        self._display_key = display_key
 
 
 def read_image(path) -> QPixmap:

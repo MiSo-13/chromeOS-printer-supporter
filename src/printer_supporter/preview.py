@@ -32,7 +32,11 @@ def render_pdf_page(path: Path, index: int, *, scale: float = 1.15) -> bytes:
     with fitz.open(str(path)) as document:
         if not 0 <= index < len(document):
             raise ValueError("페이지 번호가 올바르지 않습니다.")
-        pixmap = document[index].get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+        page = document[index]
+        # 매우 큰 PDF 페이지의 렌더링 픽셀 수를 제한해 메모리 급증을 방지합니다.
+        size = page.rect
+        scale = min(scale, 2400 / max(size.width, size.height, 1))
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
         return pixmap.tobytes("png")
 
 
