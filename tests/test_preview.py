@@ -55,3 +55,13 @@ def test_text_preview_rejects_binary(tmp_path):
     binary.write_bytes(bytes([0, 1, 2]))
     with pytest.raises(ValueError, match="텍스트"):
         read_text_preview(binary)
+
+
+def test_large_pdf_preview_is_bounded(tmp_path):
+    import fitz
+    path = tmp_path / "large.pdf"
+    with fitz.open() as document:
+        document.new_page(width=4000, height=2000)
+        document.save(path)
+    image = fitz.Pixmap(render_pdf_page(path, 0, scale=5))
+    assert max(image.width, image.height) <= 2400

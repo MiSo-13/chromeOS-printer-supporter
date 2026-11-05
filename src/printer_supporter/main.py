@@ -61,6 +61,11 @@ class MainWindow(QMainWindow):
         self.option_printer = ""
         self.option_keys: dict[str, str] = {}
         self._print_busy = False
+        self._printers_refreshing = False
+        self._printers_refresh_pending = False
+        self._queue_refreshing = False
+        self._queue_refresh_pending = False
+        self._closing = False
         QApplication.instance().installEventFilter(self)
         self.setAcceptDrops(True)
         self.setWindowTitle("ChromeOS Printer Supporter")
@@ -112,6 +117,7 @@ class MainWindow(QMainWindow):
         side_layout.setContentsMargins(10, 14, 10, 12)
         side_layout.setSpacing(8)
         tabs = QStackedWidget()
+        self.workspace_tabs = tabs
         self.navigation = []
         def add_page(page, title):
             index = tabs.addWidget(page)
@@ -135,8 +141,8 @@ class MainWindow(QMainWindow):
         layout.addLayout(footer)
 
         self.timer = QTimer(self)
-        self.timer.setInterval(5000)
-        self.timer.timeout.connect(self.refresh_all)
+        self.timer.setInterval(10000)
+        self.timer.timeout.connect(self._auto_refresh)
         self.timer.start()
         self.refresh_all()
         QTimer.singleShot(100, lambda: self.check_dependencies(required_only=True))
@@ -169,6 +175,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         # 이벤트 테스트에서 __init__ 없이 생성한 최소 Qt 창도 안전하게 종료합니다.
+        self._closing = True
+        if hasattr(self, "timer"):
+            self.timer.stop()
         if hasattr(self, "_preview_generation"):
             self._preview_generation += 1
             self._release_office_preview()
@@ -209,9 +218,12 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(stylesheet_for(theme))
 
     def _switch_page(self, index: int):
-        self.centralWidget().findChild(QStackedWidget).setCurrentIndex(index)
+        self.workspace_tabs.setCurrentIndex(index)
         for position, button in enumerate(self.navigation):
             button.setChecked(position == index)
+        # 대기열/상태 화면 진입 시 최신 정보를 한 번 조회합니다.
+        if index in (1, 2) and hasattr(self, "queue_info"):
+            self.refresh_jobs()
 
     def _background(self, operation, completed, failed=None):
         task = Task(operation)
@@ -280,22 +292,59 @@ class MainWindow(QMainWindow):
         self.status.setText(f"오류: {message}")
         self.state_text.setPlainText(message)
 
+    def _auto_refresh(self):
+        # 최소화·숨김 상태에서는 폴링하지 않습니다. 수동 새로고침은 계속 가능합니다.
+        if not self.isVisible() or self.isMinimized() or self._closing:
+            return
+        self.refresh_all()
+
     def refresh_all(self):
-        self._background(self.service.printers, self._populate_printers)
+        if self._printers_refreshing:
+            # 프린터 등록 직후 수동 갱신도 누락되지 않도록 최대 한 번 예약합니다.
+            self._printers_refresh_pending = True
+            return
+        self._printers_refreshing = True
+        try:
+            self._background(self.service.printers, self._printers_ready, self._printers_failed)
+        except Exception as exc:
+            self._printers_failed(str(exc))
+
+    def _printers_ready(self, printers):
+        self._printers_refreshing = False
+        self._populate_printers(printers)
+        if self._printers_refresh_pending and not self._closing:
+            self._printers_refresh_pending = False
+            self.refresh_all()
+
+    def _printers_failed(self, message: str):
+        self._printers_refreshing = False
+        self.show_error(message)
+        if self._printers_refresh_pending and not self._closing:
+            self._printers_refresh_pending = False
+            self.refresh_all()
 
     def _populate_printers(self, printers):
         previous = self.printer_box.currentText()
-        self.printer_box.blockSignals(True)
-        self.printer_box.clear()
-        self.printer_box.addItems([p.name for p in printers])
-        if previous in [p.name for p in printers]:
-            self.printer_box.setCurrentText(previous)
-        self.printer_box.blockSignals(False)
+        names = [printer.name for printer in printers]
+        shown = [self.printer_box.itemText(i) for i in range(self.printer_box.count())]
+        if names != shown:
+            self.printer_box.blockSignals(True)
+            self.printer_box.clear()
+            self.printer_box.addItems(names)
+            if previous in names:
+                self.printer_box.setCurrentText(previous)
+            self.printer_box.blockSignals(False)
         selected = next((p for p in printers if p.name == self.printer_box.currentText()), None)
+        previous_status = getattr(self, "selected_printer_status", None)
         self.selected_printer_status = selected
-        self._update_diagnosis(selected.reason if selected else "")
-        self.status.setText(f"{selected.name}: {selected.state}" if selected else "등록된 CUPS 프린터 없음")
-        self.refresh_jobs()
+        if selected != previous_status:
+            self._update_diagnosis(selected.reason if selected else "")
+        message = f"{selected.name}: {selected.state}" if selected else "등록된 CUPS 프린터 없음"
+        if self.status.text() != message:
+            self.status.setText(message)
+        # 문서 인쇄 화면에서는 대기열/상세 상태를 주기적으로 조회하지 않습니다.
+        if self.workspace_tabs.currentIndex() in (1, 2) or selected is None:
+            self.refresh_jobs()
         if selected and self.option_printer != selected.name:
             self.refresh_options(selected.name)
 
@@ -361,9 +410,9 @@ class MainWindow(QMainWindow):
 
     def refresh_jobs(self, *_):
         printer = self.printer_box.currentText()
-        self.queue_generation += 1
-        generation = self.queue_generation
         if not printer:
+            self.queue_generation += 1
+            self._queue_refresh_pending = False
             self.state_text.clear()
             self.current_jobs = []
             self.completed_jobs = []
@@ -372,18 +421,59 @@ class MainWindow(QMainWindow):
             self.queue_info.setText("선택한 프린터가 없습니다.")
             self._update_queue_actions()
             return
-        self._background(
-            lambda: (printer, generation, self.service.jobs(printer)),
-            self._populate_jobs,
+        if self._queue_refreshing:
+            self._queue_refresh_pending = True
+            return
+
+        self._queue_refreshing = True
+        self.queue_generation += 1
+        generation = self.queue_generation
+        page = self.workspace_tabs.currentIndex()
+        # 대기열과 상세 상태 조회를 분리하여 불필요한 lpstat 호출을 줄입니다.
+        operations = (
+            [("reasons", self.service.printer_reasons)] if page == 2
+            else [("jobs", self.service.jobs), ("history", self.service.completed_jobs)]
         )
-        self._background(
-            lambda: (printer, generation, self.service.completed_jobs(printer)),
-            self._populate_history,
-        )
-        self._background(
-            lambda: (printer, generation, self.service.printer_reasons(printer)),
-            self._populate_reasons,
-        )
+
+        def operation():
+            results = {}
+            errors = []
+            for name, load in operations:
+                try:
+                    results[name] = load(printer)
+                except Exception as exc:
+                    errors.append(f"{name}: {exc}")
+            return printer, generation, results, errors
+
+        # 하나의 워커가 필요한 조회만 실행하여 스레드 경쟁을 줄입니다.
+        try:
+            self._background(operation, self._queue_snapshot_ready, self._queue_snapshot_failed)
+        except Exception as exc:
+            self._queue_snapshot_failed(str(exc))
+
+    def _queue_snapshot_ready(self, result):
+        printer, generation, results, errors = result
+        self._queue_refreshing = False
+        if self._valid_queue_result(printer, generation):
+            if "jobs" in results:
+                self._populate_jobs((printer, generation, results["jobs"]))
+            if "history" in results:
+                self._populate_history((printer, generation, results["history"]))
+            if "reasons" in results:
+                self._populate_reasons((printer, generation, results["reasons"]))
+            if errors:
+                self.status.setText("CUPS 조회 오류: " + "; ".join(errors))
+        self._finish_queue_refresh()
+
+    def _queue_snapshot_failed(self, message: str):
+        self._queue_refreshing = False
+        self.show_error(message)
+        self._finish_queue_refresh()
+
+    def _finish_queue_refresh(self):
+        if self._queue_refresh_pending and not self._closing:
+            self._queue_refresh_pending = False
+            self.refresh_jobs()
 
     def _valid_queue_result(self, printer: str, generation: int) -> bool:
         return printer == self.printer_box.currentText() and generation == self.queue_generation
@@ -403,7 +493,8 @@ class MainWindow(QMainWindow):
 
     def _populate_reasons(self, result):
         printer, generation, reason = result
-        if self._valid_queue_result(printer, generation):
+        if (self._valid_queue_result(printer, generation)
+                and self.state_text.toPlainText() != reason):
             self.state_text.setPlainText(reason)
             self._update_diagnosis(reason)
 
@@ -411,12 +502,16 @@ class MainWindow(QMainWindow):
         printer, generation, jobs = result
         if not self._valid_queue_result(printer, generation):
             return
+        self.queue_info.setText(f"진행 중 {len(jobs)}건")
+        if jobs == self.current_jobs:
+            return
         self.current_jobs = jobs
+        current_user = getpass.getuser()
         selected = self.job_list.currentItem()
         selected_id = selected.data(Qt.ItemDataRole.UserRole) if selected else None
         self.job_list.clear()
         for job in jobs:
-            owned = "내 작업" if job.owner == getpass.getuser() else "다른 사용자"
+            owned = "내 작업" if job.owner == current_user else "다른 사용자"
             item = QListWidgetItem(
                 f"{job.job_id}  ·  {owned} ({job.owner})  ·  "
                 f"{job.size} bytes  |  {job.submitted}"
@@ -426,11 +521,12 @@ class MainWindow(QMainWindow):
             if job.job_id == selected_id:
                 self.job_list.setCurrentItem(item)
         self._update_queue_actions()
-        self.queue_info.setText(f"진행 중 {len(jobs)}건")
 
     def _populate_history(self, result):
         printer, generation, jobs = result
         if not self._valid_queue_result(printer, generation):
+            return
+        if jobs == self.completed_jobs:
             return
         self.completed_jobs = jobs
         self.history_list.clear()

@@ -30,6 +30,10 @@ def test_preview_viewer_fit_zoom_image_and_text(tmp_path):
         assert not fitted.isNull()
         assert fitted.width() <= view.scroll.viewport().width()
         assert fitted.height() <= view.scroll.viewport().height()
+        # 출력 크기가 같다면 추가 픽스맵 할당 없이 재사용합니다.
+        cached_key = fitted.cacheKey()
+        view._refresh_image()
+        assert view.image_label.pixmap().cacheKey() == cached_key
 
         view.set_zoom(1.5)
         assert view.image_label.pixmap().width() == 1500
